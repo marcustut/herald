@@ -38,6 +38,9 @@ type Cloud struct {
 	CookieSecure bool
 	SessionTTL   time.Duration
 	Logger       *slog.Logger
+	// Destinations is the hosted destination surface. Nil (a deployment that
+	// has not wired it) leaves the destination routes unregistered.
+	Destinations *app.Destinations
 }
 
 func (c *Cloud) register(mux *http.ServeMux) {
@@ -47,6 +50,7 @@ func (c *Cloud) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /cloud/v1/me", c.handleMe)
 	mux.HandleFunc("DELETE /cloud/v1/account", c.handleDeleteAccount)
 	c.registerProjects(mux)
+	c.registerDestinations(mux)
 }
 
 type magicLinkPayload struct {
@@ -79,10 +83,10 @@ func (c *Cloud) handleMagicLink(w http.ResponseWriter, r *http.Request) {
 	}
 	// Limit per IP and per address: the first bounds a single client, the
 	// second stops one mailbox being bombed from many clients.
-	if !c.allow(w, r, "ip:"+clientIP(r)) {
+	if !c.allow(w, r, "ip:"+clientIP(r), "too many sign-in attempts") {
 		return
 	}
-	if !c.allow(w, r, "email:"+email) {
+	if !c.allow(w, r, "email:"+email, "too many sign-in attempts") {
 		return
 	}
 	if err := c.Auth.RequestMagicLink(r.Context(), email); err != nil {
@@ -181,7 +185,7 @@ func (c *Cloud) csrf(w http.ResponseWriter, r *http.Request, sess app.Session) b
 	return true
 }
 
-func (c *Cloud) allow(w http.ResponseWriter, r *http.Request, key string) bool {
+func (c *Cloud) allow(w http.ResponseWriter, r *http.Request, key, message string) bool {
 	if c.Limiter == nil {
 		return true
 	}
@@ -193,7 +197,7 @@ func (c *Cloud) allow(w http.ResponseWriter, r *http.Request, key string) bool {
 	writeRateLimit(w, d)
 	if !d.Allowed {
 		w.Header().Set("Retry-After", seconds(d.RetryAfter))
-		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many sign-in attempts", "")
+		writeError(w, http.StatusTooManyRequests, "rate_limited", message, "")
 		return false
 	}
 	return true

@@ -31,6 +31,7 @@ type IDGenerator interface {
 	NewAccountID() domain.AccountID
 	NewUserID() domain.UserID
 	NewTenantID() domain.TenantID
+	NewDestinationID() domain.DestinationID
 }
 
 // MailMessage is one transactional email. The bodies are rendered by the use
@@ -207,6 +208,37 @@ type DestinationStore interface {
 	DestinationsByProject(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.Destination, error)
 	// DeleteDestination removes the destination under (tenant, project).
 	DeleteDestination(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.DestinationID) error
+	// MarkVerified records that ownership of the destination's target has been
+	// proven. The owner is supplied by the caller (from a stored verification
+	// token), never from a request body; a destination under a different owner
+	// is not modified and reports ErrDestinationNotFound.
+	MarkVerified(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.DestinationID, now time.Time) error
+}
+
+// DestinationVerificationRecord is a stored destination-verification token.
+// Only the hash is persisted; the raw token exists only in the emailed link.
+// The tenant and project are stored with the token so confirmation proves
+// ownership from the stored row, never from the request.
+type DestinationVerificationRecord struct {
+	Hash          string
+	DestinationID domain.DestinationID
+	TenantID      domain.TenantID
+	ProjectID     domain.ProjectID
+	Email         string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	UsedAt        time.Time
+}
+
+// DestinationVerificationStore persists single-use destination-verification
+// tokens.
+type DestinationVerificationStore interface {
+	PutDestinationVerification(ctx context.Context, r DestinationVerificationRecord) error
+	// ConsumeDestinationVerification atomically marks an unused, unexpired
+	// token used and returns it. A consumed, expired or unknown token reports
+	// ErrDestinationVerificationNotFound, so a replayed link cannot verify a
+	// second time.
+	ConsumeDestinationVerification(ctx context.Context, hash string, now time.Time) (DestinationVerificationRecord, error)
 }
 
 // EventStore persists a event and its delivery rows atomically, and answers

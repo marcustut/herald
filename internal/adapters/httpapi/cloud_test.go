@@ -144,6 +144,9 @@ func (g *cloudIDs) NewDeliveryID() domain.DeliveryID {
 func (g *cloudIDs) NewAccountID() domain.AccountID { return domain.AccountID(g.newID("acct_")) }
 func (g *cloudIDs) NewUserID() domain.UserID       { return domain.UserID(g.newID("usr_")) }
 func (g *cloudIDs) NewTenantID() domain.TenantID   { return domain.TenantID(g.newID("ten_")) }
+func (g *cloudIDs) NewDestinationID() domain.DestinationID {
+	return domain.DestinationID(g.newID("dst_"))
+}
 
 type cloudClock struct{ t time.Time }
 

@@ -140,6 +140,10 @@ func TestNewDestination(t *testing.T) {
 		{"bad project", func(d *Destination) { d.ProjectID = "Bad" }, ErrInvalidDestination},
 		{"unknown kind", func(d *Destination) { d.Kind = "sms" }, ErrInvalidDestinationKind},
 		{"blank target", func(d *Destination) { d.Target = "  " }, ErrInvalidDestination},
+		{"email target must be an address", func(d *Destination) { d.Target = "not-an-address" }, ErrInvalidDestination},
+		{"webhook target must be absolute", func(d *Destination) { d.Kind = DestinationWebhook; d.Target = "file:///etc/passwd" }, ErrInvalidDestination},
+		{"webhook target needs a host", func(d *Destination) { d.Kind = DestinationWebhook; d.Target = "//evil.example/hook" }, ErrInvalidDestination},
+		{"valid webhook", func(d *Destination) { d.Kind = DestinationWebhook; d.Target = "https://hooks.example.com/x" }, nil},
 		{"zero time", func(d *Destination) { d.CreatedAt = time.Time{} }, ErrInvalidDestination},
 	}
 	for _, tt := range tests {
@@ -157,5 +161,16 @@ func TestNewDestination(t *testing.T) {
 				t.Fatalf("OwnedBy = %+v", got)
 			}
 		})
+	}
+}
+
+func TestDestinationVerified(t *testing.T) {
+	d := Destination{Kind: DestinationEmail}
+	if d.Verified() {
+		t.Fatal("email destination without verified_at reports verified")
+	}
+	d.VerifiedAt = ownNow
+	if !d.Verified() {
+		t.Fatal("email destination with verified_at reports unverified")
 	}
 }

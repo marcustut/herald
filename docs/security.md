@@ -124,6 +124,9 @@ The following behaviours are covered by automated tests:
 | CRLF header injection in the subject | `TestEmailSubjectHeaderInjection` |
 | HTML escaping of body markup | `TestEmailBuildMessageEscapesHTML` |
 | Secret redaction (tokens, keys, URL credentials) | `internal/domain` redaction tests |
+| Unverified destination is never routed to | `internal/adapters/postgres` `TestDestinationRoutingRequiresVerification` |
+| Verification token is single-use, expires, and cascades with its destination | `TestDestinationVerificationTokens` |
+| Destination ownership comes from the session, and CSRF is enforced | `internal/adapters/httpapi` `TestCloudDestinationOwnershipComesFromSession`, `TestCloudDestinationRequiresSessionAndCSRF` |
 
 ## Deployment notes
 

@@ -61,6 +61,40 @@ A successful callback returns:
 
 and sets `herald_session`.
 
+## Destination configuration and verification
+
+A signed-in tenant manages each project's delivery destinations. Every route
+takes the tenant **and** project from the session and the path; the request body
+never names an owner, and a project that belongs to another tenant resolves to
+`404` as if it did not exist.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET`  | `/cloud/v1/projects/{project}/destinations` | session | List the project's destinations. |
+| `POST` | `/cloud/v1/projects/{project}/destinations` | session + CSRF | Create one (`{"kind":"email"\|"webhook","target":"..."}`). |
+| `DELETE` | `/cloud/v1/projects/{project}/destinations/{id}` | session + CSRF | Remove a destination. |
+| `POST` | `/cloud/v1/projects/{project}/destinations/{id}/verify` | session + CSRF | Mail a fresh verification link (rate limited per IP). |
+| `GET`  | `/cloud/v1/destinations/verify?token=...` | link token | Confirm an email address. |
+
+- **Email ownership must be proved.** Creating an email destination sends a
+  single-use, hashed, short-lived link to the address; only when the mailbox
+  owner redeems it is the destination `verified`. An unverified (or expired)
+  destination is **never delivered to**: hosted routing resolves a project's
+  sinks from the database and includes only enabled, verified rows.
+- **Webhooks are verified by configuration.** A webhook URL has no mailbox to
+  prove; the authenticated owner supplying it is the proof, mirroring the
+  self-host `gateway.toml` model. The dial-time SSRF guard still applies.
+- **Confirmation is token-only**, like the sign-in callback: the recipient may
+  not hold a session. The token row carries the owning `(tenant, project)` and
+  destination id, so redemption verifies exactly the destination it was minted
+  for, never one named by the request.
+- **Removal cascades.** Deleting a destination removes its outstanding
+  verification tokens, so a stale link cannot resurrect it.
+
+Hosted deployments wire `postgres.Ownership.EnabledSinks` as the sink directory
+when `cloud.enabled` is set; a self-hosted deployment keeps the config-driven
+`sink.Directory` from `gateway.toml`.
+
 ## Magic-link security model
 
 - **Single-use.** Redemption is `UPDATE … WHERE used_at IS NULL … RETURNING`:
@@ -152,9 +186,8 @@ additive, so an existing Event database upgrades with no data loss.
 
 ## Deferred
 
-Not part of this milestone and deliberately not built here: destination
-configuration and verification (#31), bounce/suppression handling (#32), the
-dashboard (#33), `herald login` (#34) and quotas (#35). The project/token
-self-service surface above is #30. Token `last_used_at` is part of the metadata
-contract but is not yet written on authentication, so it currently always reads
-empty.
+Not part of this milestone and deliberately not built here: bounce/suppression
+handling (#32), the dashboard (#33), `herald login` (#34) and quotas (#35). The
+project/token self-service surface above is #30. Token `last_used_at` is part of
+the metadata contract but is not yet written on authentication, so it currently
+always reads empty.

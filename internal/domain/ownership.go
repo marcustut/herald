@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -146,7 +147,13 @@ type Destination struct {
 	Kind      DestinationKind
 	Target    string
 	Enabled   bool
-	CreatedAt time.Time
+	// VerifiedAt records when ownership of the target was proven. Its zero
+	// value means unverified, and an unverified destination is never delivered
+	// to. A webhook proves ownership by being configured with the owner's
+	// credentials, so it is verified at creation; an email target is verified
+	// only when the mailbox owner redeems the verification link.
+	VerifiedAt time.Time
+	CreatedAt  time.Time
 }
 
 func NewDestination(in Destination) (Destination, error) {
@@ -166,6 +173,22 @@ func NewDestination(in Destination) (Destination, error) {
 	if target == "" || len(target) > MaxDestinationTargetLen {
 		return Destination{}, fmt.Errorf("%w: target", ErrInvalidDestination)
 	}
+	// Validate the target shape by kind so a hosted destination cannot be
+	// stored as a file:/data: URL or a malformed mailbox. The delivery-time
+	// SSRF guard remains the load-bearing control for webhooks.
+	switch in.Kind {
+	case DestinationEmail:
+		email, err := validEmail(target)
+		if err != nil {
+			return Destination{}, fmt.Errorf("%w: %w", ErrInvalidDestination, err)
+		}
+		target = email
+	case DestinationWebhook:
+		u, err := url.Parse(target)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return Destination{}, fmt.Errorf("%w: target must be an absolute http(s) URL", ErrInvalidDestination)
+		}
+	}
 	if in.CreatedAt.IsZero() {
 		return Destination{}, fmt.Errorf("%w: created at", ErrInvalidDestination)
 	}
@@ -177,6 +200,10 @@ func NewDestination(in Destination) (Destination, error) {
 func (d Destination) OwnedBy(tenant TenantID, project ProjectID) bool {
 	return d.TenantID == tenant && d.ProjectID == project
 }
+
+// Verified reports whether the destination's target ownership has been proven.
+// An unverified destination must never be delivered to.
+func (d Destination) Verified() bool { return !d.VerifiedAt.IsZero() }
 
 func validName(s string, sentinel error) (string, error) {
 	s = strings.TrimSpace(s)

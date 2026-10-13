@@ -22,6 +22,15 @@ var (
 	// destination that does not exist under the given (tenant, project), or
 	// whose id already belongs to a different owner.
 	ErrDestinationNotFound = errors.New("destination not found")
+	// ErrDestinationVerificationNotFound is an internal signal from a
+	// DestinationVerificationStore for a token that is unknown, already used
+	// or expired. The use case collapses it into a validation failure so a
+	// caller cannot tell an expired link from a wrong one.
+	ErrDestinationVerificationNotFound = errors.New("destination verification not found")
+	// ErrNotVerifiable is returned when verification is requested for a
+	// destination that has no mailbox to prove (a webhook is verified by
+	// configuration).
+	ErrNotVerifiable = errors.New("destination kind is not verifiable")
 	// ErrIdempotencyConflict signals that Save collided with an existing event
 	// for the same (tenant, idempotency key); the caller returns the original.
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
