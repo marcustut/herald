@@ -95,3 +95,7 @@ echo '{"status":"failure","title":"build broke"}' | herald send --json
 - **herdr plugin** — event-driven, hooks `pane.agent_status_changed` (issue #1).
 
 See [DECISIONS-AND-BLOCKERS.md](DECISIONS-AND-BLOCKERS.md).
+
+## License
+
+Herald is released under the MIT License. See [LICENSE](LICENSE).
