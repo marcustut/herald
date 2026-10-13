@@ -6,6 +6,22 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
+// FunnelStage is one step in the beta activation funnel. The set is fixed so a
+// stage can be a bounded metric label; no account id, address or event content
+// is ever attached to it.
+type FunnelStage string
+
+const (
+	// FunnelAccountCreated marks a first sign-in that provisioned an account.
+	FunnelAccountCreated FunnelStage = "account_created"
+	// FunnelProjectCreated marks a project created through the cloud surface.
+	FunnelProjectCreated FunnelStage = "project_created"
+	// FunnelFirstDelivered marks an account's first event reaching a sink.
+	FunnelFirstDelivered FunnelStage = "first_delivered"
+	// FunnelRepeatSend marks a later event reaching a sink, i.e. retention.
+	FunnelRepeatSend FunnelStage = "repeat_send"
+)
+
 // DeliveryOutcome classifies how a single delivery attempt ended. It is the
 // bounded set allowed as a metric label.
 type DeliveryOutcome string
@@ -55,6 +71,14 @@ type Observer interface {
 	// ObserveSuppression records that an address was added to the suppression
 	// list, by bounded reason (bounce, complaint).
 	ObserveSuppression(reason string)
+	// ObserveFunnel records one beta funnel stage transition, by bounded stage
+	// (account_created, project_created, first_delivered, repeat_send). It
+	// carries no identifier, address or content, so the funnel is countable
+	// without collecting personal data.
+	ObserveFunnel(stage string)
+	// ObserveActivation records account-created -> first-delivered for one
+	// account, so the beta can watch first-notification setup time.
+	ObserveActivation(took time.Duration)
 }
 
 // NoopObserver discards every measurement. It is the zero value used when no
@@ -68,6 +92,8 @@ func (NoopObserver) ObserveSubmitRejection(string)                              
 func (NoopObserver) ObserveQueueDepth(int)                                         {}
 func (NoopObserver) ObserveEmailEvent(string)                                      {}
 func (NoopObserver) ObserveSuppression(string)                                     {}
+func (NoopObserver) ObserveFunnel(string)                                          {}
+func (NoopObserver) ObserveActivation(time.Duration)                               {}
 
 var _ Observer = NoopObserver{}
 

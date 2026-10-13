@@ -133,6 +133,8 @@ each call creates a distinct event.
 - [docs/deliverability.md](docs/deliverability.md) — SPF/DKIM/DMARC records to
   publish and how to wire provider bounce/complaint webhooks into the
   suppression list.
+- [docs/beta.md](docs/beta.md) — the hosted private beta: activation funnel,
+  go/no-go criteria, feedback path and the privacy note.
 
 ## License
 

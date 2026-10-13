@@ -26,6 +26,11 @@ import (
 // Prometheus default histogram buckets.
 var httpBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
 
+// activationBuckets are the first-notification setup-time buckets, in seconds:
+// one minute up to a week. A beta account can take minutes or days to go from
+// sign-in to its first delivered event, so the HTTP latency buckets do not fit.
+var activationBuckets = []float64{60, 300, 900, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 3 * 86400, 7 * 86400}
+
 type labels map[string]string
 
 type scalar struct {
@@ -35,11 +40,12 @@ type scalar struct {
 }
 
 type histogram struct {
-	name   string
-	labels labels
-	counts []uint64 // len(buckets)+1; the last slot is +Inf
-	sum    float64
-	count  uint64
+	name    string
+	labels  labels
+	buckets []float64
+	counts  []uint64 // len(buckets)+1; the last slot is +Inf
+	sum     float64
+	count   uint64
 }
 
 // Registry holds process-local metrics. It implements app.Observer and
@@ -112,6 +118,16 @@ func (r *Registry) ObserveSuppression(reason string) {
 	r.inc("herald_email_suppressions_total", labels{"reason": suppressionReason(reason)})
 }
 
+// ObserveFunnel satisfies app.Observer.
+func (r *Registry) ObserveFunnel(stage string) {
+	r.inc("herald_funnel_events_total", labels{"stage": funnelStage(stage)})
+}
+
+// ObserveActivation satisfies app.Observer.
+func (r *Registry) ObserveActivation(took time.Duration) {
+	r.observe("herald_activation_seconds", nil, took)
+}
+
 // ServeHTTP renders the registry in the Prometheus text exposition format.
 func (r *Registry) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -145,16 +161,26 @@ func (r *Registry) set(name string, l labels, value float64) {
 func (r *Registry) observe(name string, l labels, took time.Duration) {
 	secs := took.Seconds()
 	key := seriesKey(name, l)
+	buckets := bucketsFor(name)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	h, ok := r.hists[key]
 	if !ok {
-		h = &histogram{name: name, labels: clone(l), counts: make([]uint64, len(httpBuckets)+1)}
+		h = &histogram{name: name, labels: clone(l), buckets: buckets, counts: make([]uint64, len(buckets)+1)}
 		r.hists[key] = h
 	}
-	h.counts[sort.SearchFloat64s(httpBuckets, secs)]++
+	h.counts[sort.SearchFloat64s(buckets, secs)]++
 	h.sum += secs
 	h.count++
+}
+
+// bucketsFor selects the histogram buckets for a metric. Only the activation
+// histogram uses non-default buckets.
+func bucketsFor(name string) []float64 {
+	if name == "herald_activation_seconds" {
+		return activationBuckets
+	}
+	return httpBuckets
 }
 
 func (r *Registry) expose() string {
@@ -217,12 +243,12 @@ func (r *Registry) expose() string {
 
 func writeHistogram(b *strings.Builder, h *histogram) {
 	var cumulative uint64
-	for i, ub := range httpBuckets {
+	for i, ub := range h.buckets {
 		cumulative += h.counts[i]
 		fmt.Fprintf(b, "%s_bucket%s %d\n", h.name,
 			formatLabels(withLabel(h.labels, "le", formatFloat(ub))), cumulative)
 	}
-	cumulative += h.counts[len(httpBuckets)]
+	cumulative += h.counts[len(h.buckets)]
 	fmt.Fprintf(b, "%s_bucket%s %d\n", h.name,
 		formatLabels(withLabel(h.labels, "le", "+Inf")), cumulative)
 	fmt.Fprintf(b, "%s_sum%s %s\n", h.name, formatLabels(h.labels), formatFloat(h.sum))
@@ -240,6 +266,8 @@ var meta = map[string][2]string{
 	"herald_delivery_backlog":                       {"gauge", "Pending and inflight deliveries across all tenants, sampled by the dispatcher."},
 	"herald_email_events_total":                     {"counter", "Ingested provider email notifications, by kind (delivery, bounce, complaint)."},
 	"herald_email_suppressions_total":               {"counter", "Addresses added to the suppression list, by reason (bounce, complaint)."},
+	"herald_funnel_events_total":                    {"counter", "Beta funnel stage transitions, by stage (account_created, project_created, first_delivered, repeat_send)."},
+	"herald_activation_seconds":                     {"histogram", "Time from account creation to its first delivered event, in seconds."},
 }
 
 func writeMeta(b *strings.Builder, name string) {
@@ -291,6 +319,17 @@ func emailEventKind(s string) string {
 func suppressionReason(s string) string {
 	switch s {
 	case "bounce", "complaint":
+		return s
+	default:
+		return "other"
+	}
+}
+
+// funnelStage bounds the funnel stage to the known app.FunnelStage values; an
+// unknown stage becomes "other" so a caller cannot inflate cardinality.
+func funnelStage(s string) string {
+	switch app.FunnelStage(s) {
+	case app.FunnelAccountCreated, app.FunnelProjectCreated, app.FunnelFirstDelivered, app.FunnelRepeatSend:
 		return s
 	default:
 		return "other"

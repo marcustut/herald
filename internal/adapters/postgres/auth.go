@@ -23,9 +23,21 @@ const (
 // Identities is a PostgreSQL app.IdentityStore. EnsureUser resolves or
 // provisions an account, its user and a default tenant in one transaction, so
 // concurrent first sign-ins converge on a single identity keyed by email.
-type Identities struct{ pool *pgxpool.Pool }
+type Identities struct {
+	pool *pgxpool.Pool
+	// Observer records the beta funnel stage when a new account is provisioned.
+	// Nil falls back to app.DefaultObserver, which the metrics adapter installs.
+	Observer app.Observer
+}
 
 func NewIdentities(pool *pgxpool.Pool) *Identities { return &Identities{pool: pool} }
+
+func (s *Identities) observer() app.Observer {
+	if s.Observer != nil {
+		return s.Observer
+	}
+	return app.DefaultObserver
+}
 
 func (s *Identities) EnsureUser(ctx context.Context, email string, ids app.NewIdentityIDs, now time.Time) (app.Identity, error) {
 	// A concurrent insert of the same new email surfaces as a unique
@@ -54,6 +66,7 @@ func (s *Identities) ensureUser(ctx context.Context, email string, ids app.NewId
 		userID    = string(ids.User)
 		accountID = string(ids.Account)
 		tenantID  = string(ids.Tenant)
+		created   bool
 	)
 	err = tx.QueryRow(ctx, `SELECT id, account_id FROM users WHERE email = $1`, email).Scan(&userID, &accountID)
 	switch {
@@ -73,6 +86,7 @@ func (s *Identities) ensureUser(ctx context.Context, email string, ids app.NewId
 			tenantID, accountID, tenantName, now); err != nil {
 			return app.Identity{}, err
 		}
+		created = true
 	case err != nil:
 		return app.Identity{}, fmt.Errorf("lookup user: %w", err)
 	default:
@@ -96,6 +110,11 @@ func (s *Identities) ensureUser(ctx context.Context, email string, ids app.NewId
 
 	if err := tx.Commit(ctx); err != nil {
 		return app.Identity{}, fmt.Errorf("ensure user commit: %w", err)
+	}
+	if created {
+		// A newly provisioned account is the first funnel stage. Emitted after
+		// the commit so a rolled-back transaction never counts.
+		s.observer().ObserveFunnel(string(app.FunnelAccountCreated))
 	}
 	return app.Identity{
 		UserID:    domain.UserID(userID),

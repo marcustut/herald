@@ -284,3 +284,17 @@ func TestListTokensIsTenantScoped(t *testing.T) {
 		t.Fatalf("tenant 1 tokens = %+v, err %v", one, err)
 	}
 }
+
+// Creating a project records the project_created funnel stage.
+func TestCreateProjectObservesFunnel(t *testing.T) {
+	obs := &captureObserver{}
+	p := newProjects(newFakeProjectStore(), newFakeStore())
+	p.Observer = obs
+
+	if _, err := p.CreateProject(context.Background(), "ten_1", "alpha", "Alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if len(obs.funnel) != 1 || obs.funnel[0] != string(FunnelProjectCreated) {
+		t.Fatalf("funnel = %v, want [project_created]", obs.funnel)
+	}
+}

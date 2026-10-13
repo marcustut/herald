@@ -60,6 +60,12 @@ func runDispatch(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		return 1
 	}
 
+	// The funnel activation hook is cloud-only: a self-host tenant has no
+	// account, so wiring it would only add a wasted query per delivery.
+	var activation app.ActivationStore
+	if cfg.Cloud.Enabled {
+		activation = st.funnel
+	}
 	dispatcher := app.Dispatcher{
 		Deliveries:  st.deliveries,
 		Events:      st.events,
@@ -69,6 +75,7 @@ func runDispatch(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		MaxAttempts: *maxAttempts,
 		Backoff:     domain.Backoff{Base: time.Second, Cap: 5 * time.Minute},
 		Batch:       *batch,
+		Activation:  activation,
 		Logger:      logger,
 	}
 

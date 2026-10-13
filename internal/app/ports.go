@@ -84,6 +84,27 @@ type IdentityStore interface {
 	DeleteAccount(ctx context.Context, account domain.AccountID) error
 }
 
+// DeliveryActivation is the beta funnel's per-account answer for one successful
+// delivery. It carries no identifier, address or event content.
+type DeliveryActivation struct {
+	// Known is false for a tenant with no cloud account (a self-host tenant),
+	// so the caller records nothing.
+	Known bool
+	// First is true when this delivery is the account's first distinct event to
+	// reach a sink.
+	First bool
+	// AccountCreatedAt is when the owning account was provisioned.
+	AccountCreatedAt time.Time
+}
+
+// ActivationStore answers the funnel's first-delivery question. It stores
+// nothing: first-delivery and the delay since the account was created are
+// derived from the delivered queue and the accounts table, so the funnel adds no
+// new data collection.
+type ActivationStore interface {
+	Activation(ctx context.Context, tenant domain.TenantID) (DeliveryActivation, error)
+}
+
 // SessionRecord is a stored browser session. Only the hashes of the cookie
 // value and the CSRF token are persisted; the raw values are shown once at
 // sign-in and never recoverable.

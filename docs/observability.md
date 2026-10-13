@@ -54,6 +54,8 @@ set. Bearer tokens, project ids, and event bodies are **never** used as labels.
 | `herald_delivery_backlog` | gauge | — | Pending and inflight deliveries across all tenants, sampled by the dispatcher on each successful poll. |
 | `herald_email_events_total` | counter | `kind` | Provider notifications ingested, by kind (`delivery`, `bounce`, `complaint`). Acceptance and cost are derived from this and `herald_delivery_outcomes_total` (see [Cost](#cost)). |
 | `herald_email_suppressions_total` | counter | `reason` | Addresses added to the platform-wide suppression list, by reason (`bounce`, `complaint`). |
+| `herald_funnel_events_total` | counter | `stage` | Beta funnel stage transitions: `account_created`, `project_created`, `first_delivered`, `repeat_send`. See [beta.md](beta.md). |
+| `herald_activation_seconds` | histogram | — | Account-created → first-delivered setup time, bucketed from one minute to one week. See [beta.md](beta.md). |
 
 `route` is the matched `http.ServeMux` pattern with the method stripped (for
 example `/v1/events`); unmatched requests become `other`. Unknown HTTP methods

@@ -136,6 +136,36 @@ func TestObserveEmailEventsAndSuppressions(t *testing.T) {
 	}
 }
 
+// The beta funnel exposes bounded stage counters and an activation histogram
+// whose buckets span minutes to days, not the sub-second HTTP buckets.
+func TestObserveFunnel(t *testing.T) {
+	r := metrics.NewRegistry()
+	r.ObserveFunnel("account_created")
+	r.ObserveFunnel("repeat_send")
+	r.ObserveFunnel("repeat_send")
+	r.ObserveFunnel("not-a-stage")
+	r.ObserveActivation(45 * time.Minute)
+
+	body := scrape(t, r)
+	for _, want := range []string{
+		"# TYPE herald_funnel_events_total counter",
+		`herald_funnel_events_total{stage="account_created"} 1`,
+		`herald_funnel_events_total{stage="repeat_send"} 2`,
+		`herald_funnel_events_total{stage="other"} 1`,
+		"# TYPE herald_activation_seconds histogram",
+		`herald_activation_seconds_count 1`,
+		`herald_activation_seconds_bucket{le="3600"} 1`,
+		`herald_activation_seconds_bucket{le="+Inf"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics output missing %q\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "not-a-stage") {
+		t.Fatalf("unbounded funnel stage leaked\n%s", body)
+	}
+}
+
 func TestDispatchPollGauge(t *testing.T) {
 	r := metrics.NewRegistry()
 	now := time.Unix(1_760_000_000, 0)

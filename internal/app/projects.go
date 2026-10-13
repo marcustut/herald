@@ -17,6 +17,17 @@ type Projects struct {
 	Credentials CredentialStore
 	Issuer      Issuer
 	Clock       Clock
+	// Observer records the beta funnel stage when a project is created. Nil
+	// falls back to DefaultObserver.
+	Observer Observer
+}
+
+// observer resolves the funnel observer, defaulting to the process-wide one.
+func (p Projects) observer() Observer {
+	if p.Observer != nil {
+		return p.Observer
+	}
+	return DefaultObserver
 }
 
 // CreateProject creates (or renames) a project under tenant. The id is the
@@ -29,6 +40,9 @@ func (p Projects) CreateProject(ctx context.Context, tenant domain.TenantID, id 
 	if err := p.Store.PutProject(ctx, project); err != nil {
 		return domain.Project{}, err
 	}
+	// A successful create is a funnel stage; the store upserts, so a rename
+	// through the same id counts again. There is no rename route today.
+	p.observer().ObserveFunnel(string(FunnelProjectCreated))
 	return project, nil
 }
 
