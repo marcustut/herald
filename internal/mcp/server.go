@@ -139,7 +139,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 func sendEventTool() map[string]any {
 	return map[string]any{
 		"name":        "send_event",
-		"description": "Send a finished-work event to the owner. Use when a task completes, fails, or is blocked.",
+		"description": "Send a finished-work event to the owner. Use ONLY when the user has explicitly asked to be notified about the outcome (for example \"notify me when you're done\"); the default is opt-in, so send nothing if they did not ask. Send at most once per terminal outcome (success, failure or blocked) — never on every turn, progress step or checkpoint unless the user explicitly asked for each checkpoint.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
