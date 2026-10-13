@@ -470,9 +470,21 @@ h2{margin-top:2rem}
 </div>
 
 <h2>Destinations</h2>
+<form id="new-destination" class="row" aria-label="Add a destination">
+  <label for="dst-project">Project</label>
+  <select id="dst-project" name="project" required></select>
+  <label for="dst-kind">Kind</label>
+  <select id="dst-kind" name="kind">
+    <option value="email">email</option>
+    <option value="webhook">webhook</option>
+  </select>
+  <input name="target" placeholder="you@example.com or https://…" required>
+  <button type="submit">Add destination</button>
+</form>
+<p>Email destinations must be verified — click the link we email — before they receive anything. Webhooks are trusted as configured.</p>
 <div class="tablewrap">
 <table><caption>Destinations across your projects</caption>
-<thead><tr><th>Project</th><th>Kind</th><th>Target</th><th>Status</th></tr></thead>
+<thead><tr><th>Project</th><th>Kind</th><th>Target</th><th>Status</th><th></th></tr></thead>
 <tbody id="destinations"></tbody></table>
 </div>
 </div>
@@ -599,6 +611,14 @@ h2{margin-top:2rem}
         sel.appendChild(o);
       });
     });
+    var dst = document.getElementById("dst-project");
+    dst.textContent = "";
+    projects.forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.id;
+      dst.appendChild(o);
+    });
   }
   function renderEvents(events) {
     var body = document.getElementById("events");
@@ -676,6 +696,18 @@ h2{margin-top:2rem}
       tr.appendChild(td(d.kind));
       tr.appendChild(td(d.target));
       tr.appendChild(td(d.verified ? "verified" : (d.enabled ? "unverified" : "disabled")));
+      var actions = document.createElement("td");
+      if (d.kind === "email") {
+        actions.appendChild(button("Re-send verification", function () {
+          return api("POST", "/v1/projects/" + encodeURIComponent(d.project) + "/destinations/" + encodeURIComponent(d.id) + "/verify")
+            .then(function () { notice("Verification link sent to " + d.target); });
+        }));
+      }
+      actions.appendChild(button("Delete", function () {
+        if (!confirm("Delete destination " + d.target + "?")) { return Promise.resolve(); }
+        return api("DELETE", "/v1/projects/" + encodeURIComponent(d.project) + "/destinations/" + encodeURIComponent(d.id)).then(reload);
+      }));
+      tr.appendChild(actions);
       body.appendChild(tr);
     });
   }
@@ -727,6 +759,13 @@ h2{margin-top:2rem}
     var f = ev.target;
     var projects = f.projects.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
     api("POST", "/v1/tokens", {projects: projects}).then(showToken).catch(function (e) { notice(e.message); });
+  });
+  document.getElementById("new-destination").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var f = ev.target;
+    api("POST", "/v1/projects/" + encodeURIComponent(f.project.value) + "/destinations", {kind: f.kind.value, target: f.target.value})
+      .then(function () { f.target.value = ""; notice("Destination added. If it is an email, click the verification link we send."); return reload(); })
+      .catch(function (e) { notice(e.message); });
   });
   document.getElementById("events-filter").addEventListener("submit", function (ev) {
     ev.preventDefault();

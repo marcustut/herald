@@ -368,6 +368,9 @@ func TestCloudProjectsPageSignInShell(t *testing.T) {
 	if !strings.Contains(string(body), "signin-form") {
 		t.Fatal("signed-out page is missing the sign-in form")
 	}
+	if !strings.Contains(string(body), "new-destination") {
+		t.Fatal("page is missing the add-destination form")
+	}
 
 	f.signIn(t, "alice@example.com")
 	resp = f.do(t, http.MethodGet, "/dashboard", "")
