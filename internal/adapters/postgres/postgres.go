@@ -18,7 +18,10 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-const schema = `
+// baselineSchema is migration version 1 (see migrations.go). It is idempotent
+// and guarded so it applies cleanly to a fresh database, the legacy reports
+// schema, and an already-migrated Event database.
+const baselineSchema = `
 -- Rename the pre-Event schema (reports / deliveries.report_id) in place so
 -- existing data survives the Report -> Event rename. Guarded and idempotent;
 -- a fresh database skips straight to the CREATE statements below.
@@ -116,30 +119,6 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
 	return pool, nil
-}
-
-// migrateLockID serializes concurrent migrations so that serve and dispatch
-// can start at the same time without racing on CREATE TABLE.
-const migrateLockID int64 = 0x686572616c64
-
-// Migrate creates the schema if it does not exist.
-func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("migrate begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrateLockID); err != nil {
-		return fmt.Errorf("migrate lock: %w", err)
-	}
-	if _, err := tx.Exec(ctx, schema); err != nil {
-		return fmt.Errorf("migrate: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("migrate commit: %w", err)
-	}
-	return nil
 }
 
 // Credentials is a PostgreSQL app.CredentialStore.
