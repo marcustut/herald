@@ -55,6 +55,21 @@ func (i Issuer) RevokeProject(ctx context.Context, tenant domain.TenantID, proje
 	return i.Store.Put(ctx, cred)
 }
 
+// RevokeCredential revokes the credential with token hash under tenant. A hash
+// that belongs to another tenant reports ErrCredentialNotFound, so knowing a
+// foreign hash is not enough to revoke it.
+func (i Issuer) RevokeCredential(ctx context.Context, tenant domain.TenantID, hash string) error {
+	cred, err := i.Store.ByHash(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if cred.TenantID != tenant {
+		return ErrCredentialNotFound
+	}
+	cred.RevokedAt = i.Clock.Now()
+	return i.Store.Put(ctx, cred)
+}
+
 func (i Issuer) put(ctx context.Context, tenant domain.TenantID, kind domain.TokenKind, projects []domain.ProjectID, raw string) error {
 	return i.Store.Put(ctx, Credential{
 		Hash:      i.Hasher.Hash(raw),

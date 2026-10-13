@@ -164,6 +164,9 @@ type CredentialStore interface {
 	// ProjectCredential returns the project-scoped credential for project, used
 	// to revoke it. It must not match a scoped token that merely covers project.
 	ProjectCredential(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) (Credential, error)
+	// ByTenant returns every credential issued to tenant, newest first. The
+	// list carries only stored metadata; a raw token is never recoverable.
+	ByTenant(ctx context.Context, tenant domain.TenantID) ([]Credential, error)
 }
 
 // SinkDirectory resolves the sinks a project's events fan out to.
@@ -181,6 +184,8 @@ type ProjectStore interface {
 	PutProject(ctx context.Context, p domain.Project) error
 	// Project returns the project with id under tenant.
 	Project(ctx context.Context, tenant domain.TenantID, id domain.ProjectID) (domain.Project, bool, error)
+	// Projects returns every project owned by tenant, newest first.
+	Projects(ctx context.Context, tenant domain.TenantID) ([]domain.Project, error)
 	// DeleteProject removes the project and its destinations. A project owned
 	// by another tenant is not deleted and reports ErrProjectNotFound.
 	DeleteProject(ctx context.Context, tenant domain.TenantID, id domain.ProjectID) error

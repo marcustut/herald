@@ -171,6 +171,28 @@ func (s *Credentials) ProjectCredential(ctx context.Context, tenant domain.Tenan
 	return c, err
 }
 
+func (s *Credentials) ByTenant(ctx context.Context, tenant domain.TenantID) ([]app.Credential, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT token_hash, tenant_id, kind, projects, created_at, revoked_at, last_used_at
+		FROM credentials
+		WHERE tenant_id = $1
+		ORDER BY created_at DESC, token_hash`, string(tenant))
+	if err != nil {
+		return nil, fmt.Errorf("list credentials: %w", err)
+	}
+	defer rows.Close()
+
+	var out []app.Credential
+	for rows.Next() {
+		c, err := scanCredential(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func scanCredential(row pgx.Row) (app.Credential, error) {
 	var (
 		c          app.Credential

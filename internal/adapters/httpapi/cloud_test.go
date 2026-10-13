@@ -1,8 +1,10 @@
 package httpapi_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -148,10 +150,13 @@ type cloudClock struct{ t time.Time }
 func (c cloudClock) Now() time.Time { return c.t }
 
 type cloudFixture struct {
-	server *httptest.Server
-	client *http.Client
-	mail   *cloudMailer
-	auth   *app.Auth
+	server   *httptest.Server
+	client   *http.Client
+	mail     *cloudMailer
+	auth     *app.Auth
+	creds    *memory.Credentials
+	projects *fakeProjects
+	logs     *bytes.Buffer
 }
 
 func newCloudFixture(t *testing.T, limiter app.LoginLimiter) *cloudFixture {
@@ -168,12 +173,27 @@ func newCloudFixture(t *testing.T, limiter app.LoginLimiter) *cloudFixture {
 		LinkBase:   "https://cloud.example.com",
 	}
 	mail := auth.Mailer.(*cloudMailer)
+	creds := memory.NewCredentials()
+	projects := newFakeProjects()
+	logs := &bytes.Buffer{}
 	api := &httpapi.Server{
 		Cloud: &httpapi.Cloud{
 			Auth:         *auth,
 			Limiter:      limiter,
 			CookieSecure: true,
 			SessionTTL:   time.Hour,
+			Logger:       slog.New(slog.NewTextHandler(logs, nil)),
+			Projects: app.Projects{
+				Store:       projects,
+				Credentials: creds,
+				Issuer: app.Issuer{
+					Store:   creds,
+					Hasher:  shaHasher{},
+					Secrets: &fixedSecrets{},
+					Clock:   cloudClock{t: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)},
+				},
+				Clock: cloudClock{t: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)},
+			},
 		},
 	}
 	ts := httptest.NewTLSServer(api.Handler())
@@ -184,7 +204,7 @@ func newCloudFixture(t *testing.T, limiter app.LoginLimiter) *cloudFixture {
 	}
 	client := ts.Client()
 	client.Jar = jar
-	return &cloudFixture{server: ts, client: client, mail: mail, auth: auth}
+	return &cloudFixture{server: ts, client: client, mail: mail, auth: auth, creds: creds, projects: projects, logs: logs}
 }
 
 // fixedSecrets yields predictable, distinct, long-enough secrets.
