@@ -85,7 +85,7 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 .term-body{padding:.85rem 1.05rem;display:flex;flex-direction:column;gap:.45rem;min-height:7.5rem;min-width:0}
 .line{margin:0;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prompt{white-space:nowrap}
-.sig{color:var(--accent);margin-right:.35em}
+.sig{color:var(--accent)}
 .c{color:var(--accent)}
 .ok{color:var(--positive)}
 .typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:26ch;animation:type var(--loop) steps(var(--typechars),end) infinite}
@@ -157,6 +157,7 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 .terminal{margin:1.75rem 0 1.25rem;border:var(--rule) solid var(--line-strong);border-radius:var(--radius-panel);background:var(--surface);overflow:hidden}
 .terminal figcaption{font-family:var(--font-mono);font-size:.6875rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:.6rem 1.1rem;border-bottom:var(--rule) solid var(--line)}
 .terminal pre{margin:0;padding:1.1rem 1.25rem;overflow-x:auto;font-family:var(--font-mono);font-size:.8125rem;line-height:1.7;color:var(--fg)}
+.terminal pre code{background:none;padding:0;border-radius:0;color:inherit;font-size:inherit}
 .terminal .c{color:var(--accent-text)}
 .terminal .ok{color:var(--positive)}
 .terminal .dim{color:var(--muted)}
