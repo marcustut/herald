@@ -69,8 +69,13 @@ One tool is advertised by `tools/list`.
 
 ### `send_event`
 
-Send a finished-work event to the owner. Use when a task completes, fails, or is
-blocked.
+Send a finished-work event to the owner. Use it **only when the user has
+explicitly asked** to be notified about the outcome — the default is opt-in, so
+if they did not ask, do not send. Send at most one event per terminal outcome
+(`success`, `failure` or `blocked`); never notify on every turn, progress step or
+checkpoint unless the user explicitly asked for each checkpoint. This mirrors the
+[skill](skill.md) and the lifecycle hooks; see the canonical
+[consent policy](consent.md).
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

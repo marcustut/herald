@@ -25,7 +25,8 @@ Claude Code Stop / Notification hook
    per-session debounce state
 ```
 
-It never sends on progress hooks, and it is **off until you opt in**.
+It never sends on progress hooks, and it is **off until you opt in**. This is the
+same [notification consent policy](consent.md) the skill and the MCP tool follow.
 
 ## Install (Claude Code)
 
@@ -87,6 +88,19 @@ export HERALD_HOOK_ENABLED=1
 Consent is deliberately per environment, not per repository: setting the token
 alone does not start sending. To opt a single project in, export the variables
 in that project's dev shell; to opt back out, unset `HERALD_HOOK_ENABLED`.
+
+To be told **only when the agent is blocked** (for example "tell me only when
+Claude needs me"), opt in and narrow the taxonomy:
+
+```sh
+export HERALD_HOOK_ENABLED=1
+export HERALD_HOOK_EVENTS=Notification
+```
+
+The [consent policy](consent.md) is the canonical version of all of this,
+including the loop guard — a Herald event must never trigger another
+notification — and how consent relates to the per-project rate limits and
+quotas.
 
 ## Event taxonomy
 

@@ -21,6 +21,9 @@ explicitly asks to be told about the outcome** — "notify me when you're done",
 "email me when it finishes", "let me know if it fails". It does not fire on
 ordinary task completion, and it never streams progress.
 
+This is the shared [notification consent policy](consent.md) — opt-in, ask first
+— that the MCP tool and the lifecycle hooks follow too.
+
 When it does fire, the agent sends **exactly one** event at the terminal state,
 using `success`, `failure` or `blocked`. If the user asks to be notified at each
 checkpoint, it sends at each checkpoint instead.
