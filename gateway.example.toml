@@ -21,11 +21,19 @@ from_name = "Herald"
 # Only needed when dialling an IP address: the certificate name to expect.
 # server_name = "mail.example.com"
 
+# Hosted account surface (Herald Cloud). Off by default, so a self-hosted
+# deployment exposes no signup/sign-in routes at all. Enable it only on the
+# hosted control plane, with the absolute public origin the magic-link callback
+# points at; an https origin also makes the session cookie Secure. See
+# docs/cloud-auth.md.
+[cloud]
+enabled = false
+# base_url = "https://cloud.example.com"
+
 # Outbound-delivery hardening. A webhook URL only ever comes from this file;
 # these settings constrain those admin-configured URLs. Non-loopback SMTP
 # always requires STARTTLS with certificate verification. See docs/security.md.
-[security]
-# Optional explicit host allowlist for webhook sinks (case-insensitive; a port
+[security]# Optional explicit host allowlist for webhook sinks (case-insensitive; a port
 # is ignored). When non-empty, every webhook host must be listed here.
 webhook_allow_hosts = ["hooks.slack.com"]
 # Allow webhook delivery to loopback/private/link-local addresses. Off by

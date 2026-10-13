@@ -92,6 +92,21 @@ func (g *fakeIDs) NewDeliveryID() domain.DeliveryID {
 	return domain.DeliveryID(fmt.Sprintf("del_%d", g.n))
 }
 
+func (g *fakeIDs) NewAccountID() domain.AccountID {
+	g.n++
+	return domain.AccountID(fmt.Sprintf("acct_%d", g.n))
+}
+
+func (g *fakeIDs) NewUserID() domain.UserID {
+	g.n++
+	return domain.UserID(fmt.Sprintf("usr_%d", g.n))
+}
+
+func (g *fakeIDs) NewTenantID() domain.TenantID {
+	g.n++
+	return domain.TenantID(fmt.Sprintf("ten_%d", g.n))
+}
+
 type eventKey struct {
 	tenant  domain.TenantID
 	project domain.ProjectID

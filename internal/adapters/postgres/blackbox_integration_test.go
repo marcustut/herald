@@ -60,7 +60,7 @@ func openMigrated(t *testing.T) (*pgxpool.Pool, context.Context) {
 		t.Fatalf("open database: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
+	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS sessions, login_tokens, destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
 		t.Fatalf("reset schema: %v", err)
 	}
 	if err := postgres.Migrate(ctx, pool); err != nil {

@@ -22,8 +22,18 @@ type Gateway struct {
 	SMTP     SMTP               `toml:"smtp"`
 	Security Security           `toml:"security"`
 	Limits   Limits             `toml:"limits"`
+	Cloud    Cloud              `toml:"cloud"`
 	Projects map[string]Project `toml:"projects"`
 	Sinks    map[string]Sink    `toml:"sinks"`
+}
+
+// Cloud gates the hosted account surface. When Enabled is false (the default,
+// and always for a self-hosted deployment) no accounts, signup or sign-in
+// routes are registered and the server behaves as if the feature were absent.
+// BaseURL is the absolute origin the magic-link callback points at.
+type Cloud struct {
+	Enabled bool   `toml:"enabled"`
+	BaseURL string `toml:"base_url"`
 }
 
 // Security holds the outbound-delivery hardening knobs. A webhook destination
@@ -199,6 +209,9 @@ func (g Gateway) Validate() error {
 	if err := g.Security.validate(); err != nil {
 		return err
 	}
+	if err := g.Cloud.validate(g.SMTP); err != nil {
+		return err
+	}
 	for slug, p := range g.Projects {
 		if slug == "" {
 			return errors.New("project slug must not be empty")
@@ -235,6 +248,22 @@ func (s Security) validate() error {
 		if hostOnly(h) == "" {
 			return errors.New("security.webhook_allow_hosts contains an empty host")
 		}
+	}
+	return nil
+}
+
+// validate rejects an enabled cloud section that lacks the pieces the sign-in
+// flow needs. A disabled section is ignored, so existing configs are unchanged.
+func (c Cloud) validate(smtp SMTP) error {
+	if !c.Enabled {
+		return nil
+	}
+	u, err := url.Parse(c.BaseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("cloud.base_url must be an absolute http(s) URL with a host when cloud.enabled is true")
+	}
+	if smtp.Addr == "" || smtp.From == "" {
+		return errors.New("cloud.enabled requires [smtp] addr and from to send magic links")
 	}
 	return nil
 }

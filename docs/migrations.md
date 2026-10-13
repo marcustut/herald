@@ -43,6 +43,15 @@ therefore converges the three states a database can be in:
 - an already-migrated Event database that predates `schema_migrations` (no-op,
   then the baseline is recorded).
 
+### Sessions and magic links (version 3)
+
+`auth` adds the hosted sign-in state: `login_tokens` (single-use, hashed
+magic-link tokens with an expiry), `sessions` (hashed session and CSRF values,
+cascading with their user/account/tenant) and a global unique index on
+`users(email)`, so an address resolves to exactly one identity. It is purely
+additive; the ownership tables were staged empty by version 2, so the unique
+index cannot collide with existing rows.
+
 ### Checksum verification
 
 If the SQL of an already-applied step no longer hashes to the recorded
