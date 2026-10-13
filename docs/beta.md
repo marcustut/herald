@@ -4,9 +4,11 @@ This document is the operating note for the hosted cloud private beta. It define
 the activation funnel we watch, the go/no-go criteria for widening the beta, the
 feedback path, and exactly what telemetry is collected and why.
 
-The cloud surface is **config-gated**: it exists only when `[cloud] enabled` is
-set and a database backs it. A self-hosted deployment without it exposes no
-accounts, signup or sign-in routes and emits none of the funnel below.
+The cloud surface is **always on when a database is configured**: the account
+surface is part of the product. A `--dev` run (no database) has no account
+surface, exposes no accounts/signup/sign-in routes and emits none of the funnel
+below. `[auth] signup = false` runs the surface closed: only existing accounts
+can sign in.
 
 ## The funnel
 

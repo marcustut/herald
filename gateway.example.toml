@@ -6,12 +6,11 @@
 
 [server]
 addr = "127.0.0.1:8787"
-tenant = "owner"
 
 # SMTP submission host. Prefer a hostname over an IP so STARTTLS can verify the
 # certificate — for Gmail, smtp.gmail.com:587 (see docs/smtp-gmail.md). The
 # sender must be an address these credentials may send as; many servers require
-# it to match the account.
+# it to match the account. Magic-link sign-in needs both addr and from.
 [smtp]
 addr = "smtp.example.com:587"
 from = "herald@example.com"
@@ -21,56 +20,42 @@ from_name = "Herald"
 # Only needed when dialling an IP address: the certificate name to expect.
 # server_name = "mail.example.com"
 
-# Hosted account surface (Herald Cloud). Off by default, so a self-hosted
-# deployment exposes no signup/sign-in routes at all. Enable it only on the
-# hosted control plane; base_url is the public base the API is served under
-# (the magic-link callback path is appended to it, and it may include a prefix
-# such as /api). An https origin also makes the session cookie Secure. See
-# docs/control-plane.md.
-[cloud]
-enabled = false
-# base_url = "https://cloud.example.com"
+# Account/control-plane surface. Accounts are part of the product: whenever a
+# database is configured the control-plane API is composed. base_url is the
+# public base the API is served under (the magic-link callback path is appended
+# to it, and it may include a prefix such as /api). An https origin also makes
+# the session cookie Secure. See docs/control-plane.md.
+[auth]
+base_url = "http://127.0.0.1:8787"
+# signup = true lets a request for an unknown address provision and mail a new
+# account; set it false to restrict sign-in to existing accounts.
+signup = true
 # Provider bounce/complaint webhook. When true, POST /v1/email/events
 # ingests SES/SNS (or generic) notifications and suppresses hard-bounced or
-# complaining addresses. Requires HERALD_BOUNCE_WEBHOOK_SECRET and cloud.enabled.
+# complaining addresses. Requires HERALD_BOUNCE_WEBHOOK_SECRET.
 # See docs/deliverability.md.
-# bounce_webhook = false
+bounce_webhook = false
 
-# Outbound-delivery hardening. A webhook URL only ever comes from this file;
-# these settings constrain those admin-configured URLs. Non-loopback SMTP
-# always requires STARTTLS with certificate verification. See docs/security.md.
-[security]# Optional explicit host allowlist for webhook sinks (case-insensitive; a port
+# Outbound-delivery hardening. A webhook URL only ever comes from the database;
+# these settings constrain those URLs. Non-loopback SMTP always requires
+# STARTTLS with certificate verification. See docs/security.md.
+[security]
+# Optional explicit host allowlist for webhook destinations (case-insensitive; a port
 # is ignored). When non-empty, every webhook host must be listed here.
 webhook_allow_hosts = ["hooks.slack.com"]
 # Allow webhook delivery to loopback/private/link-local addresses. Off by
 # default so a webhook cannot reach cloud metadata or intranet services.
 allow_private_networks = false
 
-# Submit limits, enforced per project at POST /v1/events. Values inherit the
-# built-in defaults (60/1m, 2000/day, 20000/month) when omitted. See
-# docs/rate-limiting.md.
+# Submit limits, enforced per (tenant, project) at POST /v1/events. Values
+# inherit the built-in defaults (60/1m, 2000/day, 20000/month) when omitted.
+# See docs/rate-limiting.md.
 [limits]
 requests = 60
 window = "1m"
 daily = 2000
 monthly = 20000
 
-# Which sinks each project fans out to.
-[projects.axis]
-sinks = ["email"]
-
-# A project may override any limit; unset fields inherit [limits].
-[projects.axis.limits]
-requests = 120
-window = "1m"
-
-[projects.finance]
-sinks = ["email", "slack"]
-
-[sinks.email]
-kind = "email"
-recipient = "you@example.com"
-
-[sinks.slack]
-kind = "webhook"
-url = "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+# Projects and destinations are managed over the API/dashboard, not here. A
+# signed-in account creates a project and then one or more destinations; the
+# dispatcher resolves the project's verified destinations at delivery time.

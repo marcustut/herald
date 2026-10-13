@@ -119,8 +119,7 @@ endpoint for them.
 1. **Enable the route.** In `gateway.toml`:
 
    ```toml
-   [cloud]
-   enabled = true
+   [auth]
    base_url = "https://cloud.example.com"
    bounce_webhook = true
    ```

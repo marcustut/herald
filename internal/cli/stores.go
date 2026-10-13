@@ -9,7 +9,6 @@ import (
 	"github.com/marcustut/herald/internal/adapters/sink"
 	"github.com/marcustut/herald/internal/app"
 	"github.com/marcustut/herald/internal/config"
-	"github.com/marcustut/herald/internal/domain"
 )
 
 type stores struct {
@@ -42,16 +41,17 @@ type stores struct {
 	close  func()
 }
 
-// dispatchSinks selects the dispatcher's sink source. A hosted deployment
-// resolves each delivery's destination from the database, so removal,
-// disablement and verification are enforcement points at delivery time, and
-// applies the suppression list; a self-host deployment keeps the sinks built
-// from gateway.toml.
-func dispatchSinks(cfg config.Gateway, st stores, static map[domain.SinkID]app.Sink, smtpUser, smtpPass string) app.SinkSource {
-	if cfg.Cloud.Enabled && st.destinations != nil {
-		return sink.NewDestinationSource(st.destinations, cfg, smtpUser, smtpPass).WithSuppressions(st.suppressions)
+// dispatchSinks selects the dispatcher's sink source. The only routing is a
+// database destination: each delivery's destination is resolved from the
+// database at delivery time, so removal, disablement and verification are
+// enforcement points, and the suppression list is applied. A dev run with no
+// database has no destination store (and no destinations), so it returns nil
+// and nothing is delivered.
+func dispatchSinks(cfg config.Gateway, st stores, smtpUser, smtpPass string) app.SinkSource {
+	if st.destinations == nil {
+		return nil
 	}
-	return app.SinkMap(static)
+	return sink.NewDestinationSource(st.destinations, cfg, smtpUser, smtpPass).WithSuppressions(st.suppressions)
 }
 
 // openStores returns PostgreSQL-backed stores, or in-memory stores in dev mode.

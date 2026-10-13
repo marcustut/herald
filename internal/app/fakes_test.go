@@ -93,6 +93,14 @@ func (s *fakeSinks) EnabledSinks(context.Context, domain.TenantID, domain.Projec
 	return s.sinks, s.err
 }
 
+// staticSinkSource is a test SinkSource over a fixed map of built sinks.
+type staticSinkSource map[domain.SinkID]Sink
+
+func (m staticSinkSource) Sink(_ context.Context, _ domain.TenantID, _ domain.ProjectID, id domain.SinkID) (Sink, bool, error) {
+	s, ok := m[id]
+	return s, ok, nil
+}
+
 type fakeIDs struct{ n int }
 
 func (g *fakeIDs) NewEventID() domain.EventID {

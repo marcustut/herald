@@ -185,6 +185,16 @@ func TestTokenRequiresDatabase(t *testing.T) {
 	}
 }
 
+// `token create` has no config default tenant: the operator must name one.
+func TestTokenCreateRequiresTenant(t *testing.T) {
+	t.Setenv("HERALD_DATABASE_URL", "")
+	t.Setenv("HERALD_TENANT", "")
+	code, _, errOut := run(t, "", "token", "create", "--project", "axis")
+	if code != 1 || !strings.Contains(errOut, "tenant") {
+		t.Fatalf("code=%d stderr=%q, want a tenant error", code, errOut)
+	}
+}
+
 func TestSkillCommand(t *testing.T) {
 	code, out, _ := run(t, "", "skill")
 	if code != 0 {

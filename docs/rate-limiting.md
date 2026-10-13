@@ -9,42 +9,38 @@ stored.
 ## Configuration
 
 Limits live in `gateway.toml`. Every field is optional and inherits the built-in
-default below.
+default below. The one global `[limits]` budget is applied to every
+`(tenant, project)` partition.
 
 ```toml
-# Global defaults, applied to every project.
+# Global budget, applied to every (tenant, project).
 [limits]
 requests = 60      # requests allowed per window
 window   = "1m"    # fixed window, Go duration syntax ("30s", "5m", "1h")
 daily    = 2000    # calendar-day quota (00:00 UTC)
 monthly  = 20000   # calendar-month quota (1st, 00:00 UTC)
 queued   = 0       # max outstanding deliveries; 0 disables (default)
-
-[projects.axis]
-sinks = ["email"]
-
-# Per-project override; any field left out keeps the global value.
-[projects.axis.limits]
-requests = 120
-window   = "1m"
 ```
 
 Built-in defaults (used when `[limits]` is omitted) are:
 
 | Limit | Default | Meaning |
 |---|---|---|
-| `requests` / `window` | 60 / 1m | at most 60 submits per rolling minute, per project |
+| `requests` / `window` | 60 / 1m | at most 60 submits per rolling minute, per (tenant, project) |
 | `daily` | 2000 | at most 2000 submits per UTC calendar day |
 | `monthly` | 20000 | at most 20000 submits per UTC calendar month |
 | `queued` | 0 (off) | at most this many outstanding (pending or inflight) deliveries |
 
-`queued` is off by default, so a self-hosted deployment that does not set it
-behaves exactly as before.
+`queued` is off by default, so a deployment that does not set it behaves exactly
+as before.
 
 A zero or omitted field means "inherit". There is no "unlimited" switch — set a
-very high number (e.g. `requests = 1000000`) for a project you never want to
+very high number (e.g. `requests = 1000000`) for a gateway you never want to
 throttle. Negative limits and non-positive or unparseable windows fail config
 validation at startup.
+
+Per-project overrides will move to the database later (see #35); until then the
+single `[limits]` budget applies to every project.
 
 ## Responses
 
@@ -78,7 +74,7 @@ Counters are partitioned by `(tenant, project)`, so two projects — or the same
 project under two tenants — never share a budget. Three fixed windows are
 tracked per partition:
 
-- a per-project request window (`requests` / `window`),
+- a request window (`requests` / `window`),
 - a UTC calendar day, and
 - a UTC calendar month.
 
@@ -131,8 +127,9 @@ then, run the API as a single instance, or size limits for the replica count.
 
 ## Tuning
 
-- Limits are per project, so raise `[projects.<name>.limits]` for a busy CI
-  project and keep the global default tight.
+- Limits are global (`[limits]`), so raise them for the whole gateway; a busy
+  CI project and a quiet one share the budget today (per-project overrides are
+  tracked in #35).
 - The request window guards against bursts; the daily/monthly quotas guard
   against slow leaks. Set `daily` well above `requests × expected busy minutes`
   so normal traffic never hits the quota.

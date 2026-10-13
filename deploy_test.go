@@ -33,21 +33,30 @@ func TestDockerExampleGatewayConfigLoads(t *testing.T) {
 	if want := "0.0.0.0:8787"; cfg.Server.Addr != want {
 		t.Errorf("server.addr = %q, want %q", cfg.Server.Addr, want)
 	}
-	if len(cfg.Projects) == 0 {
-		t.Fatal("no projects configured")
-	}
-	for slug, p := range cfg.Projects {
-		for _, id := range p.Sinks {
-			if _, ok := cfg.Sinks[id]; !ok {
-				t.Errorf("project %q references undefined sink %q", slug, id)
-			}
-		}
+	if cfg.Auth.BaseURL == "" {
+		t.Error("no [auth] base_url configured")
 	}
 }
 
 func TestExampleGatewayConfigLoads(t *testing.T) {
 	if _, err := config.LoadGateway(repoFile(t, "gateway.example.toml")); err != nil {
 		t.Fatalf("LoadGateway(gateway.example.toml): %v", err)
+	}
+}
+
+// TOML routing is retired: the shipped example configs must not carry the
+// legacy [cloud], [projects] or [sinks] tables or a server tenant.
+func TestExampleGatewayConfigsHaveNoLegacySurface(t *testing.T) {
+	for _, name := range []string{"gateway.example.toml", "gateway.docker.example.toml"} {
+		data, err := os.ReadFile(repoFile(t, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for _, forbidden := range []string{"[cloud]", "[projects", "[sinks", "tenant ="} {
+			if strings.Contains(string(data), forbidden) {
+				t.Errorf("%s still contains %q", name, forbidden)
+			}
+		}
 	}
 }
 

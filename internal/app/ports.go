@@ -79,6 +79,11 @@ type NewIdentityIDs struct {
 // its existing identity, never a second one.
 type IdentityStore interface {
 	EnsureUser(ctx context.Context, email string, ids NewIdentityIDs, now time.Time) (Identity, error)
+	// UserByEmail returns the identity for a registered address, reporting
+	// false (no error) when no user has it. It provisions nothing, so the
+	// signup gate can tell a new address from an existing one without creating
+	// a row.
+	UserByEmail(ctx context.Context, email string) (Identity, bool, error)
 	// DeleteAccount removes the account and everything it owns; account, user,
 	// tenant, project, destination and session rows all cascade away.
 	DeleteAccount(ctx context.Context, account domain.AccountID) error
@@ -198,20 +203,11 @@ type SinkDirectory interface {
 
 // SinkSource resolves the sink a delivery is pushed to. The tenant and project
 // come from the stored event, never from the delivery row, so a source can
-// scope the lookup to the owner. A config-built source is static; a hosted
-// source loads the destination row on every call, so removal, disablement or a
-// revoked verification takes effect immediately.
+// scope the lookup to the owner. The only routing is a database destination
+// (sink.DestinationSource), which loads the destination row on every call so
+// removal, disablement or a revoked verification takes effect immediately.
 type SinkSource interface {
 	Sink(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.SinkID) (Sink, bool, error)
-}
-
-// SinkMap is a static SinkSource over sinks built at startup (the self-host
-// gateway.toml path).
-type SinkMap map[domain.SinkID]Sink
-
-func (m SinkMap) Sink(_ context.Context, _ domain.TenantID, _ domain.ProjectID, id domain.SinkID) (Sink, bool, error) {
-	s, ok := m[id]
-	return s, ok, nil
 }
 
 // ProjectStore persists the tenant-owned projects an account provisions. Every

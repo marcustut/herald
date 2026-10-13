@@ -52,9 +52,12 @@ restart the queue consumer without touching the API.
    The host part of `HERALD_DATABASE_URL` is the Compose service name
    (`postgres`), not `localhost`.
 
-4. **Edit `gateway.toml`** — the `[smtp]` host, `from`, and each `[sinks.*]`
-   recipient. Keep `addr = "0.0.0.0:8787"` (binding `127.0.0.1` inside the
-   container makes the port unreachable).
+4. **Edit `gateway.toml`** — the `[smtp]` host/`from` and `[auth] base_url`
+   (the public base the API is served under; the account surface is always on
+   when a database is configured). Keep `addr = "0.0.0.0:8787"` (binding
+   `127.0.0.1` inside the container makes the port unreachable). Destinations
+   are not configured here: a signed-in account creates a project and its
+   email/webhook destinations over the API or `/dashboard`.
 
 5. **Start the stack**:
 
@@ -66,11 +69,11 @@ restart the queue consumer without touching the API.
    Migrations run automatically on startup; the database schema is created on
    first boot.
 
-6. **Create a token** for a project (matches a `[projects.<name>]` in
-   `gateway.toml`):
+6. **Create a token** for a project (the project must already exist in the
+   database; a signed-in account creates it over the API or `/dashboard`):
 
    ```sh
-   docker compose run --rm herald token create --project axis
+   docker compose run --rm herald token create --tenant owner --project axis
    # → herald_axis_<secret>   (shown once; store it in that repo's secret store)
    ```
 
@@ -85,9 +88,9 @@ restart the queue consumer without touching the API.
    # → 202 {"id":"..."}
    ```
 
-   The dispatcher delivers it to the project's sinks within a second or two
-   (`herald-dispatcher` polls). `/v1/reports` remains a deprecated alias of
-   `/v1/events`.
+   The dispatcher delivers it to the project's verified destinations within a
+   second or two (`herald-dispatcher` polls). `/v1/reports` remains a deprecated
+   alias of `/v1/events`.
 
 ## Required and optional environment
 
@@ -95,7 +98,7 @@ restart the queue consumer without touching the API.
 |---|---|---|
 | `HERALD_DATABASE_URL` | yes | PostgreSQL DSN used by the API, dispatcher, and `token` commands. |
 | `HERALD_POSTGRES_PASSWORD` | yes | Password for the bundled PostgreSQL. |
-| `HERALD_SMTP_USERNAME` / `HERALD_SMTP_PASSWORD` | for email sinks | SMTP submission credentials. Never placed in `gateway.toml`. |
+| `HERALD_SMTP_USERNAME` / `HERALD_SMTP_PASSWORD` | for email destinations | SMTP submission credentials. Never placed in `gateway.toml`. |
 | `HERALD_POSTGRES_USER` / `HERALD_POSTGRES_DB` | no | Default to `herald`. |
 | `HERALD_PORT` | no | Host port for the API. Defaults to `8787`. |
 | `HERALD_DISPATCH_WORKERS` | no | Concurrent dispatcher claim loops. Defaults to `2`. |
@@ -172,13 +175,14 @@ docker compose logs -f herald herald-dispatcher postgres
 - **`docker compose up` exits with `set HERALD_... in .env`** — a required
   variable is missing. Fill in `.env`.
 - **`herald` container restarts / `unhealthy`** — check logs. A common cause is
-  `gateway.toml` failing validation (e.g. a project references an undefined
-  sink, or the file is missing). The error is logged verbatim.
+  `gateway.toml` failing validation (e.g. a missing/invalid `[auth] base_url`
+  or an unusable `[smtp] addr`/`from`, or the file is missing). The error is
+  logged verbatim.
 - **API unreachable on the published port** — `server.addr` in `gateway.toml`
   must be `0.0.0.0:8787`; `127.0.0.1` is only reachable inside the container.
 - **`401 unauthenticated`** — the bearer token's project does not match the
   `project` in the request, or the token was revoked. Recreate it with
-  `docker compose run --rm herald token create --project <name>`.
+  `docker compose run --rm herald token create --tenant <id> --project <name>`.
 - **`503 unavailable` / `/readyz` not ready** — the API cannot reach
   PostgreSQL. Verify `HERALD_DATABASE_URL` matches `HERALD_POSTGRES_*` and that
   `postgres` is `(healthy)`. Migrations run against this same DSN.

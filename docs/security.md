@@ -9,42 +9,48 @@ sensitive content is — and is not — persisted or logged. It complements
 The model is single-owner for v1: the gateway, its config file, and its
 database are trusted; **event content and every HTTP client are not**.
 
-## Sinks are pinned server-side
+## Destinations are pinned server-side
 
-A sink destination is resolved from the credential and the admin's
-`gateway.toml`, never from a request body or event content. An agent cannot
+A destination is resolved from the credential and the project's stored
+destination rows, never from a request body or event content. An agent cannot
 choose where a notification goes, include an extra recipient, or add headers.
 This is enforced by construction: `SubmitEvent` fans out to the project's
-configured sinks only, and the event's free-text `links` are delivered as data
-— they are never dialled.
+enabled, verified destinations only, and the event's free-text `links` are
+delivered as data — they are never dialled.
 
-- Email recipient: from `[sinks.*] recipient`.
-- Webhook URL: from `[sinks.*] url`, validated at config load.
+- Email recipient: from the stored `email` destination's target.
+- Webhook URL: from the stored `webhook` destination's target, re-checked at
+  delivery time.
+
+Destinations are created by the authenticated project owner over the API or
+`/dashboard`; there is no `gateway.toml` routing and no request field that names
+one.
 
 ## Webhook SSRF policy
 
 Because a webhook is an outbound HTTP request made by the server, a
-misconfigured or attacker-influenced URL is a server-side request forgery
-(SSRF) risk. Herald defends in depth:
+misconfigured or maliciously-chosen URL is a server-side request forgery (SSRF)
+risk. Herald defends in depth:
 
-1. **Admin-configured only.** There is no API, CLI, MCP, or event field that
-   sets a webhook URL. It can only come from `gateway.toml`, which is trusted
-   configuration.
-2. **Scheme and host validation at load.** A webhook URL must be an absolute
-   `http` or `https` URL with a host. `file:`, `gopher:`, `data:`, `javascript:`
-   and protocol-relative targets are rejected when the config is read, before a
-   sink is built.
+1. **Authenticated owner only.** A webhook URL can only be created by the
+   account that owns the project, over the session-authenticated API (or the
+   `/dashboard` page). Agents and event payloads have no path to it.
+2. **Scheme and host validation at creation.** A webhook target must be an
+   absolute `http` or `https` URL with a host. `file:`, `gopher:`, `data:`,
+   `javascript:` and protocol-relative targets are rejected when the destination
+   is created.
 3. **Optional explicit host allowlist.** Set `security.webhook_allow_hosts` to
-   restrict webhooks to named hosts:
+   restrict webhook destinations to named hosts:
 
    ```toml
    [security]
    webhook_allow_hosts = ["hooks.slack.com", "alerts.example.com"]
    ```
 
-   When the list is non-empty, any webhook sink whose host is not listed fails
-   config validation. Matching is case-insensitive and ignores a port. An empty
-   list permits any host, still subject to the dial-time guard below.
+   When the list is non-empty, a webhook destination whose host is not listed is
+   not delivered to (its delivery dead-letters). Matching is case-insensitive
+   and ignores a port. An empty list permits any host, still subject to the
+   dial-time guard below.
 4. **Redirects are never followed.** The webhook client sets `CheckRedirect` to
    `http.ErrUseLastResponse`, so a `3xx` is surfaced to the dispatcher as a
    permanent failure and the redirect target is never contacted. This closes
@@ -95,10 +101,10 @@ address that bounces hard can damage every tenant's sending. Herald therefore:
   platform-wide suppression list. The hosted delivery path checks it live, so a
   suppression added after an event was queued still takes effect, and refuses a
   suppressed address permanently — dead-lettered with no retry. Unverified and
-  removed destinations are refused the same way (see [Sinks are pinned
-  server-side](#sinks-are-pinned-server-side)).
+  removed destinations are refused the same way (see [Destinations are pinned
+  server-side](#destinations-are-pinned-server-side)).
 - **Authenticates ingestion.** The provider bounce/complaint endpoint
-  (`POST /v1/email/events`) is off unless `[cloud] bounce_webhook` is set,
+  (`POST /v1/email/events`) is off unless `[auth] bounce_webhook` is set,
   and requires the shared secret from `HERALD_BOUNCE_WEBHOOK_SECRET`, compared
   in constant time. It 404s like any absent cloud route when unconfigured, so a
   probe cannot tell it apart from a route that does not exist.
