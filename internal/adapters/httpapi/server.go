@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/marcustut/herald/internal/adapters/metrics"
 	"github.com/marcustut/herald/internal/app"
 	"github.com/marcustut/herald/internal/domain"
 )
@@ -25,9 +26,17 @@ type Server struct {
 	Auth    app.Authenticator
 	Submit  app.SubmitEvent
 	Limiter app.RateLimiter
+	// Ready answers readiness (database reachable and dispatcher progressing).
+	// Nil means always ready; liveness is separate and unconditional.
 	Ready   func(ctx context.Context) error
 	MaxBody int64
 	Logger  *slog.Logger
+
+	// Observer records request metrics. Nil falls back to app.DefaultObserver,
+	// which the metrics adapter installs. Metrics is the handler served at
+	// GET /metrics; nil falls back to the metrics adapter's default registry.
+	Observer app.Observer
+	Metrics  http.Handler
 }
 
 func (s *Server) Handler() http.Handler {
@@ -37,8 +46,49 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/reports", s.handleSubmit)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
-	return mux
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
+	return s.instrument(mux)
 }
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	h := s.Metrics
+	if h == nil {
+		h = metrics.Default
+	}
+	h.ServeHTTP(w, r)
+}
+
+func (s *Server) observer() app.Observer {
+	if s.Observer != nil {
+		return s.Observer
+	}
+	return app.DefaultObserver
+}
+
+// instrument records one HTTP measurement per request. Labels are bounded: the
+// route is the matched ServeMux pattern (or "other"), the method is a standard
+// verb (or "other"), the status is the response code — never a token, project
+// id, or body.
+func (s *Server) instrument(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		s.observer().ObserveHTTP(r.Pattern, r.Method, rec.status, time.Since(start))
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusRecorder) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusRecorder) Write(b []byte) (int, error) { return w.ResponseWriter.Write(b) }
 
 type linkDTO struct {
 	Label string `json:"label"`
