@@ -34,6 +34,11 @@ func (s *fakeIdentities) EnsureUser(_ context.Context, email string, ids NewIden
 	return id, nil
 }
 
+func (s *fakeIdentities) UserByEmail(_ context.Context, email string) (Identity, bool, error) {
+	id, ok := s.byEmail[email]
+	return id, ok, nil
+}
+
 func (s *fakeIdentities) DeleteAccount(_ context.Context, account domain.AccountID) error {
 	s.deleted = append(s.deleted, account)
 	for email, id := range s.byEmail {
@@ -185,6 +190,62 @@ func TestRequestMagicLinkStoresOnlyHash(t *testing.T) {
 	}
 	if !strings.Contains(mail.msgs[0].Text, "https://cloud.example.com/v1/auth/callback?token=") {
 		t.Fatalf("mail text = %q", mail.msgs[0].Text)
+	}
+}
+
+func TestRequestMagicLinkSignupOnProvisionsOnRedeem(t *testing.T) {
+	a, _, ids, _, _, mail := newAuth(t)
+	// Signup is on by default (zero value).
+	if a.DisableSignup {
+		t.Fatal("signup should default on")
+	}
+	if err := a.RequestMagicLink(context.Background(), "fresh@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.msgs) != 1 {
+		t.Fatalf("mailed = %d, want 1", len(mail.msgs))
+	}
+	if len(ids.byEmail) != 0 {
+		t.Fatal("provisioned before redeeming the link")
+	}
+	if _, err := a.ConsumeMagicLink(context.Background(), mail.token(t)); err != nil {
+		t.Fatal(err)
+	}
+	if len(ids.byEmail) != 1 {
+		t.Fatalf("identities = %d, want 1 after redeem", len(ids.byEmail))
+	}
+}
+
+func TestRequestMagicLinkSignupOff(t *testing.T) {
+	a, _, ids, _, tokens, mail := newAuth(t)
+	a.DisableSignup = true
+
+	// A new address is silently accepted: no mail, no token row, no account.
+	if err := a.RequestMagicLink(context.Background(), "fresh@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.msgs) != 0 {
+		t.Fatalf("mailed a new address with signup off: %+v", mail.msgs)
+	}
+	if len(tokens.byHash) != 0 {
+		t.Fatalf("stored a login token for a new address: %+v", tokens.byHash)
+	}
+	if len(ids.byEmail) != 0 {
+		t.Fatalf("provisioned a new address with signup off: %+v", ids.byEmail)
+	}
+
+	// An existing address still receives a link.
+	if _, err := ids.EnsureUser(context.Background(), "known@example.com", a.newIDs(), testNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RequestMagicLink(context.Background(), "known@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.msgs) != 1 || mail.msgs[0].To != "known@example.com" {
+		t.Fatalf("existing address not mailed: %+v", mail.msgs)
+	}
+	if len(tokens.byHash) != 1 {
+		t.Fatalf("login tokens = %d, want 1", len(tokens.byHash))
 	}
 }
 

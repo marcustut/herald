@@ -26,10 +26,14 @@ const queueRetryAfter = 30 * time.Second
 // shared-state implementation instead (see docs/rate-limiting.md). Counters are
 // reset lazily as their windows roll over and the oldest entry is evicted at
 // capacity, keeping memory bounded.
+//
+// shortcut: every (tenant, project) shares the one global [limits] budget;
+// per-project overrides move to the database later (#35). Until then this one
+// budget is applied to every partition.
 type RateLimiter struct {
 	mu      sync.Mutex
 	clock   app.Clock
-	limits  map[domain.ProjectID]app.Limits
+	limit   app.Limits
 	entries map[limitKey]*limitEntry
 	maxKeys int
 	// queue reports the durable backlog per (tenant, project) for the Queued
@@ -51,14 +55,14 @@ type limitEntry struct {
 	monthCount  int
 }
 
-// NewRateLimiter builds a limiter for the given per-project budgets. A project
-// with no entry (or with every limit disabled) is never limited. queue, when
-// non-nil, supplies the durable backlog for the Queued cap; a nil queue leaves
-// that cap disabled.
-func NewRateLimiter(limits map[domain.ProjectID]app.Limits, clock app.Clock, queue app.QueueGauge) *RateLimiter {
+// NewRateLimiter builds a limiter for the given global budget, applied to every
+// (tenant, project). A disabled budget never limits. queue, when non-nil,
+// supplies the durable backlog for the Queued cap; a nil queue leaves that cap
+// disabled.
+func NewRateLimiter(limit app.Limits, clock app.Clock, queue app.QueueGauge) *RateLimiter {
 	return &RateLimiter{
 		clock:   clock,
-		limits:  limits,
+		limit:   limit,
 		entries: make(map[limitKey]*limitEntry),
 		maxKeys: defaultMaxKeys,
 		queue:   queue,
@@ -71,8 +75,8 @@ var _ app.RateLimiter = (*RateLimiter)(nil)
 // reports a Decision with the tightest limit so the caller can set Retry-After
 // and the X-RateLimit-* headers.
 func (l *RateLimiter) Allow(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) (app.Decision, error) {
-	lim, ok := l.limits[project]
-	if !ok || lim.Disabled() {
+	lim := l.limit
+	if lim.Disabled() {
 		return app.Decision{Allowed: true}, nil
 	}
 	now := l.clock.Now()

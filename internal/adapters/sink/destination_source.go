@@ -18,6 +18,7 @@ import (
 type DestinationSource struct {
 	destinations app.DestinationStore
 	smtp         config.SMTP
+	security     config.Security
 	smtpUser     string
 	smtpPass     string
 	webhook      *http.Client
@@ -35,6 +36,7 @@ func NewDestinationSource(destinations app.DestinationStore, cfg config.Gateway,
 	return &DestinationSource{
 		destinations: destinations,
 		smtp:         cfg.SMTP,
+		security:     cfg.Security,
 		smtpUser:     smtpUser,
 		smtpPass:     smtpPass,
 		webhook:      NewHTTPClient(WebhookTimeout, cfg.Security.AllowPrivateNetworks),
@@ -65,7 +67,13 @@ func (s *DestinationSource) Sink(ctx context.Context, tenant domain.TenantID, pr
 	if !d.Enabled || !d.Verified() {
 		return nil, false, nil
 	}
-	built, err := build(string(d.ID), destinationConfig(d), s.smtp, s.smtpUser, s.smtpPass, s.webhook)
+	// A webhook destination must also pass the operator's optional host
+	// allowlist (the destination row is live state, so the policy is applied
+	// here, not at config load).
+	if d.Kind == domain.DestinationWebhook && !s.security.WebhookHostAllowed(d.Target) {
+		return nil, false, nil
+	}
+	built, err := buildDestination(d, s.smtp, s.smtpUser, s.smtpPass, s.webhook)
 	if err != nil {
 		return nil, false, fmt.Errorf("build sink for destination %s: %w", d.ID, err)
 	}
@@ -80,15 +88,6 @@ func (s *DestinationSource) Sink(ctx context.Context, tenant domain.TenantID, pr
 		}
 	}
 	return built, true, nil
-}
-
-// destinationConfig maps a stored destination to the config shape the sink
-// factory builds from, so hosted and self-host sinks share one implementation.
-func destinationConfig(d domain.Destination) config.Sink {
-	if d.Kind == domain.DestinationWebhook {
-		return config.Sink{Kind: "webhook", URL: d.Target}
-	}
-	return config.Sink{Kind: "email", Recipient: d.Target}
 }
 
 var _ app.SinkSource = (*DestinationSource)(nil)

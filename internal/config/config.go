@@ -12,46 +12,45 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/marcustut/herald/internal/app"
-	"github.com/marcustut/herald/internal/domain"
 )
 
 // Gateway is the server configuration. Secrets (SMTP password, token hashes)
 // never live here.
 type Gateway struct {
-	Server   Server             `toml:"server"`
-	SMTP     SMTP               `toml:"smtp"`
-	Security Security           `toml:"security"`
-	Limits   Limits             `toml:"limits"`
-	Cloud    Cloud              `toml:"cloud"`
-	Projects map[string]Project `toml:"projects"`
-	Sinks    map[string]Sink    `toml:"sinks"`
+	Server   Server   `toml:"server"`
+	SMTP     SMTP     `toml:"smtp"`
+	Security Security `toml:"security"`
+	Limits   Limits   `toml:"limits"`
+	Auth     Auth     `toml:"auth"`
 }
 
-// Cloud gates the hosted account surface. When Enabled is false (the default,
-// and always for a self-hosted deployment) no accounts, signup or sign-in
-// routes are registered and the server behaves as if the feature were absent.
+// Auth configures the account/control-plane surface. Accounts are part of the
+// product: whenever a database is configured the control-plane API is composed.
 // BaseURL is the public base under which the API is served; the magic-link
-// callback path is appended to it. It is an absolute URL and may include a
-// path prefix such as /api.
+// callback path is appended to it. It is an absolute URL and may include a path
+// prefix such as /api. Signup gates whether a request for an unregistered
+// address provisions and mails a new account; existing accounts always receive
+// links.
 //
 // BounceWebhook enables the provider bounce/complaint ingestion endpoint
 // (POST /v1/email/events). It is shared-secret authenticated with
 // HERALD_BOUNCE_WEBHOOK_SECRET, which is read from the environment so no secret
 // lives in the config file. See docs/deliverability.md.
-type Cloud struct {
-	Enabled       bool   `toml:"enabled"`
+type Auth struct {
 	BaseURL       string `toml:"base_url"`
+	Signup        bool   `toml:"signup"`
 	BounceWebhook bool   `toml:"bounce_webhook"`
 }
 
 // Security holds the outbound-delivery hardening knobs. A webhook destination
-// can only ever come from this file (the request body and event content have no
-// path to it); these settings constrain those admin-configured URLs further.
+// can only ever come from the database (the request body and event content have
+// no path to it); these settings constrain those URLs further.
 // See docs/security.md.
 type Security struct {
-	// WebhookAllowHosts, when non-empty, restricts webhook sinks to these hosts
-	// (case-insensitive; a port is ignored). Empty allows any host, still
-	// subject to the dial-time private-network guard.
+	// WebhookAllowHosts, when non-empty, restricts webhook destinations to
+	// these hosts (case-insensitive; a port is ignored). Empty allows any host,
+	// still subject to the dial-time private-network guard. It is enforced at
+	// delivery time, since destinations live in the database.
 	WebhookAllowHosts []string `toml:"webhook_allow_hosts"`
 	// AllowPrivateNetworks permits webhook delivery to loopback, private and
 	// link-local addresses (for a receiver on a trusted internal network). Off
@@ -60,9 +59,9 @@ type Security struct {
 	AllowPrivateNetworks bool `toml:"allow_private_networks"`
 }
 
-// Built-in submit limits, applied to every project that does not override them.
-// They are deliberately generous for one agent but bounded, so a runaway or
-// compromised client cannot fill the queue. See docs/rate-limiting.md.
+// Built-in submit limits, applied to every (tenant, project). They are
+// deliberately generous for one agent but bounded, so a runaway or compromised
+// client cannot fill the queue. See docs/rate-limiting.md.
 const (
 	DefaultRequests = 60
 	DefaultWindow   = "1m"
@@ -70,10 +69,10 @@ const (
 	DefaultMonthly  = 20000
 )
 
-// Limits is one project's submit budget. Every field is optional: an unset
-// field inherits the global [limits] defaults. Window is a Go duration string
-// ("30s", "1m", "1h"). Queued caps outstanding deliveries (backpressure) and is
-// off by default so self-host behaviour is unchanged until an operator sets it.
+// Limits is the global submit budget, applied to every (tenant, project). Every
+// field is optional: an unset field inherits the built-in default. Window is a
+// Go duration string ("30s", "1m", "1h"). Queued caps outstanding deliveries
+// (backpressure) and is off by default.
 type Limits struct {
 	Requests int    `toml:"requests"`
 	Window   string `toml:"window"`
@@ -83,8 +82,7 @@ type Limits struct {
 }
 
 type Server struct {
-	Addr   string `toml:"addr"`
-	Tenant string `toml:"tenant"`
+	Addr string `toml:"addr"`
 }
 
 // DefaultFromName is the display name used for the From header when the config
@@ -103,18 +101,6 @@ type SMTP struct {
 	ServerName string `toml:"server_name"`
 }
 
-type Project struct {
-	Sinks []string `toml:"sinks"`
-	// Limits, when present, overrides the global [limits] for this project.
-	Limits *Limits `toml:"limits"`
-}
-
-type Sink struct {
-	Kind      string `toml:"kind"`
-	Recipient string `toml:"recipient"`
-	URL       string `toml:"url"`
-}
-
 func LoadGateway(path string) (Gateway, error) {
 	var g Gateway
 	md, err := toml.DecodeFile(path, &g)
@@ -123,6 +109,9 @@ func LoadGateway(path string) (Gateway, error) {
 	}
 	if !md.IsDefined("smtp", "from_name") {
 		g.SMTP.FromName = DefaultFromName
+	}
+	if !md.IsDefined("auth", "signup") {
+		g.Auth.Signup = true
 	}
 	g.Limits = g.Limits.withDefaults()
 	if err := g.Validate(); err != nil {
@@ -166,56 +155,22 @@ func (l Limits) validate(scope string) error {
 	return nil
 }
 
-// EffectiveLimits resolves the global [limits] and each project's override into
-// the per-project budget the submit limiter enforces.
-func (g Gateway) EffectiveLimits() map[domain.ProjectID]app.Limits {
-	out := make(map[domain.ProjectID]app.Limits, len(g.Projects))
-	for slug, p := range g.Projects {
-		l := g.Limits.withDefaults()
-		if p.Limits != nil {
-			l = l.merge(*p.Limits)
-		}
-		d, _ := time.ParseDuration(l.Window)
-		out[domain.ProjectID(slug)] = app.Limits{
-			Requests: l.Requests,
-			Window:   d,
-			Daily:    l.Daily,
-			Monthly:  l.Monthly,
-			Queued:   l.Queued,
-		}
+// AppLimits is the resolved global budget the submit limiter enforces for every
+// (tenant, project).
+func (l Limits) AppLimits() app.Limits {
+	d, _ := time.ParseDuration(l.Window)
+	return app.Limits{
+		Requests: l.Requests,
+		Window:   d,
+		Daily:    l.Daily,
+		Monthly:  l.Monthly,
+		Queued:   l.Queued,
 	}
-	return out
-}
-
-// merge applies the non-zero override fields on top of base.
-func (l Limits) merge(over Limits) Limits {
-	if over.Requests != 0 {
-		l.Requests = over.Requests
-	}
-	if over.Window != "" {
-		l.Window = over.Window
-	}
-	if over.Daily != 0 {
-		l.Daily = over.Daily
-	}
-	if over.Monthly != 0 {
-		l.Monthly = over.Monthly
-	}
-	if over.Queued != 0 {
-		l.Queued = over.Queued
-	}
-	return l
 }
 
 func (g Gateway) Validate() error {
 	if g.Server.Addr == "" {
 		return errors.New("server.addr is required")
-	}
-	if g.Server.Tenant == "" {
-		return errors.New("server.tenant is required")
-	}
-	if len(g.Projects) == 0 {
-		return errors.New("at least one project is required")
 	}
 	if err := g.Limits.validate("limits"); err != nil {
 		return err
@@ -223,38 +178,7 @@ func (g Gateway) Validate() error {
 	if err := g.Security.validate(); err != nil {
 		return err
 	}
-	if err := g.Cloud.validate(g.SMTP); err != nil {
-		return err
-	}
-	for slug, p := range g.Projects {
-		if slug == "" {
-			return errors.New("project slug must not be empty")
-		}
-		if p.Limits != nil {
-			if err := p.Limits.validate("project " + slug + " limits"); err != nil {
-				return err
-			}
-		}
-		if len(p.Sinks) == 0 {
-			return fmt.Errorf("project %q has no sinks", slug)
-		}
-		for _, id := range p.Sinks {
-			sink, ok := g.Sinks[id]
-			if !ok {
-				return fmt.Errorf("project %q references unknown sink %q", slug, id)
-			}
-			if err := sink.Validate(); err != nil {
-				return fmt.Errorf("sink %q: %w", id, err)
-			}
-			if sink.Kind == "webhook" {
-				u, _ := parseWebhookURL(sink.URL)
-				if !g.Security.webhookHostAllowed(u) {
-					return fmt.Errorf("sink %q: webhook host %q is not in security.webhook_allow_hosts", id, u.Host)
-				}
-			}
-		}
-	}
-	return nil
+	return g.Auth.validate(g.SMTP)
 }
 
 func (s Security) validate() error {
@@ -266,31 +190,17 @@ func (s Security) validate() error {
 	return nil
 }
 
-// validate rejects an enabled cloud section that lacks the pieces the sign-in
-// flow needs. A disabled section is ignored, so existing configs are unchanged.
-func (c Cloud) validate(smtp SMTP) error {
-	if c.BounceWebhook && !c.Enabled {
-		return errors.New("cloud.bounce_webhook requires cloud.enabled")
-	}
-	if !c.Enabled {
-		return nil
-	}
-	u, err := url.Parse(c.BaseURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return errors.New("cloud.base_url must be an absolute http(s) URL with a host when cloud.enabled is true")
-	}
-	if smtp.Addr == "" || smtp.From == "" {
-		return errors.New("cloud.enabled requires [smtp] addr and from to send magic links")
-	}
-	return nil
-}
-
-// webhookHostAllowed reports whether a webhook host passes the optional
-// allowlist. An empty allowlist permits any host; the dial-time guard still
-// blocks non-public addresses.
-func (s Security) webhookHostAllowed(u *url.URL) bool {
-	if len(s.WebhookAllowHosts) == 0 || u == nil {
+// WebhookHostAllowed reports whether a stored webhook destination passes the
+// optional allowlist. An empty allowlist permits any host; the dial-time guard
+// still blocks non-public addresses. A non-http(s) or host-less URL never
+// matches.
+func (s Security) WebhookHostAllowed(raw string) bool {
+	if len(s.WebhookAllowHosts) == 0 {
 		return true
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return false
 	}
 	host := hostOnly(u.Host)
 	for _, allowed := range s.WebhookAllowHosts {
@@ -301,50 +211,27 @@ func (s Security) webhookHostAllowed(u *url.URL) bool {
 	return false
 }
 
+// validate rejects an auth section that lacks the pieces the account surface
+// needs: a public base URL and a usable SMTP submission path.
+func (a Auth) validate(smtp SMTP) error {
+	u, err := url.Parse(a.BaseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("auth.base_url must be an absolute http(s) URL with a host")
+	}
+	if smtp.Addr == "" || smtp.From == "" {
+		return errors.New("accounts require [smtp] addr and from to send magic links")
+	}
+	return nil
+}
+
 // hostOnly lowercases a host and drops a trailing port, so allowlist entries
-// and URLs compare by name alone.
+// compare by name alone.
 func hostOnly(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if h, _, err := net.SplitHostPort(s); err == nil {
 		return h
 	}
 	return s
-}
-
-// parseWebhookURL validates a webhook destination at configuration load. Only
-// absolute http/https URLs with a host are accepted, so file:, data: and
-// protocol-relative targets are rejected before any sink is built.
-func parseWebhookURL(raw string) (*url.URL, error) {
-	if raw == "" {
-		return nil, errors.New("webhook sink requires url")
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, fmt.Errorf("webhook sink url: %w", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("webhook sink url scheme %q is not http or https", u.Scheme)
-	}
-	if u.Host == "" {
-		return nil, errors.New("webhook sink url requires a host")
-	}
-	return u, nil
-}
-
-func (s Sink) Validate() error {
-	switch s.Kind {
-	case "email":
-		if s.Recipient == "" {
-			return errors.New("email sink requires recipient")
-		}
-	case "webhook":
-		if _, err := parseWebhookURL(s.URL); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unknown sink kind %q", s.Kind)
-	}
-	return nil
 }
 
 // Client is the per-project configuration committed to a repository. It holds

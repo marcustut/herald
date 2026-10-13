@@ -22,8 +22,11 @@ cp gateway.docker.example.toml gateway.toml
 Edit `.env` so `HERALD_DATABASE_URL` and `HERALD_POSTGRES_PASSWORD` agree
 (`change-me` is fine for a local run), and fill the SMTP settings if you want
 email — see [smtp-gmail.md](smtp-gmail.md) if you need credentials.
-Then edit `gateway.toml`: set a `[sinks.*]` recipient and a
-`[projects.<name>]` for your project. Start it:
+Then edit `gateway.toml`: set the `[smtp]` host/`from` and an absolute
+`[auth] base_url` (the public base the API is served under). Destinations are
+not in the file: over `/dashboard` or the API, sign in, create the project and
+add an email (or webhook) destination, then confirm the verification email.
+Start it:
 
 ```sh
 docker compose up -d
@@ -35,10 +38,12 @@ Migrations run automatically on first boot.
 
 ## 2. Create a token (≈2 min)
 
-A token is per project and shown once. Issue it on the gateway host:
+A token is per project and shown once. Issue it on the gateway host (the
+project/destination are created over the API/dashboard; `--tenant` names the
+owner):
 
 ```sh
-docker compose run --rm herald token create --project axis
+docker compose run --rm herald token create --tenant owner --project axis
 # → herald_axis_<secret>
 ```
 

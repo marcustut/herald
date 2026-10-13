@@ -38,11 +38,15 @@ func runToken(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 func runTokenCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("token create", stderr)
 	dsn := fs.String("database-url", os.Getenv("HERALD_DATABASE_URL"), "PostgreSQL connection string")
-	tenant := fs.String("tenant", firstNonEmpty(os.Getenv("HERALD_TENANT"), "owner"), "tenant id")
+	tenant := fs.String("tenant", os.Getenv("HERALD_TENANT"), "tenant id (required)")
 	project := fs.String("project", "", "project slug (project token)")
 	scoped := fs.String("scoped", "", "comma-separated projects (scoped token)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *tenant == "" {
+		fmt.Fprintln(stderr, "error: --tenant is required")
+		return 1
 	}
 	if *dsn == "" {
 		fmt.Fprintln(stderr, "error: --database-url or HERALD_DATABASE_URL is required")
@@ -84,10 +88,14 @@ func runTokenCreate(ctx context.Context, args []string, stdout, stderr io.Writer
 func runTokenRevoke(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("token revoke", stderr)
 	dsn := fs.String("database-url", os.Getenv("HERALD_DATABASE_URL"), "PostgreSQL connection string")
-	tenant := fs.String("tenant", firstNonEmpty(os.Getenv("HERALD_TENANT"), "owner"), "tenant id")
+	tenant := fs.String("tenant", os.Getenv("HERALD_TENANT"), "tenant id (required)")
 	project := fs.String("project", "", "project slug")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *tenant == "" {
+		fmt.Fprintln(stderr, "error: --tenant is required")
+		return 1
 	}
 	if *dsn == "" || *project == "" {
 		fmt.Fprintln(stderr, "error: --database-url and --project are required")

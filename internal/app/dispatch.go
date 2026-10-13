@@ -15,10 +15,9 @@ import (
 type Dispatcher struct {
 	Deliveries DeliveryStore
 	Events     EventStore
-	// Sinks resolves the sink for a delivery at delivery time. A hosted
-	// deployment loads the destination from the database so a removed, disabled
-	// or unverified destination stops receiving immediately; a self-host
-	// deployment uses a static SinkMap built from gateway.toml.
+	// Sinks resolves the sink for a delivery at delivery time. The deployment
+	// loads the destination from the database so a removed, disabled or
+	// unverified destination stops receiving immediately.
 	Sinks       SinkSource
 	Clock       Clock
 	Lease       time.Duration

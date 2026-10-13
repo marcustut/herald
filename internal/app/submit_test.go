@@ -201,6 +201,22 @@ func TestSubmitNoSinks(t *testing.T) {
 	}
 }
 
+// A nil directory is the dev/no-database case: the event is stored and nothing
+// is fanned out (there is no config fallback routing).
+func TestSubmitNilSinkDirectory(t *testing.T) {
+	events := newFakeEvents()
+	uc := SubmitEvent{Events: events, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
+	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if len(events.deliveries) != 0 {
+		t.Fatalf("deliveries = %d, want 0", len(events.deliveries))
+	}
+	if len(events.byKey) != 1 {
+		t.Fatal("event not saved")
+	}
+}
+
 func TestSubmitValidationErrors(t *testing.T) {
 	tests := []struct {
 		name   string

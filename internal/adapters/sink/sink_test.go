@@ -294,64 +294,35 @@ func TestWebhookBadURLIsPermanent(t *testing.T) {
 	}
 }
 
-func TestDirectory(t *testing.T) {
-	cfg := config.Gateway{
-		Server:   config.Server{Addr: "x", Tenant: "t"},
-		Projects: map[string]config.Project{"axis": {Sinks: []string{"email", "slack"}}},
-		Sinks: map[string]config.Sink{
-			"email": {Kind: "email", Recipient: "a@b"},
-			"slack": {Kind: "webhook", URL: "https://x"},
-		},
-	}
-	dir := NewDirectory(cfg)
-	got, err := dir.EnabledSinks(context.Background(), "t", "axis")
+func TestBuildDestination(t *testing.T) {
+	smtpCfg := config.SMTP{Addr: "127.0.0.1:25", From: "h@x", FromName: "Herald"}
+	email, err := buildDestination(domain.Destination{
+		ID: "dst_e", Kind: domain.DestinationEmail, Target: "a@b",
+	}, smtpCfg, "user", "pass", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "email" || got[1] != "slack" {
-		t.Fatalf("got %v", got)
-	}
-	empty, _ := dir.EnabledSinks(context.Background(), "t", "unknown")
-	if len(empty) != 0 {
-		t.Fatalf("unknown project = %v", empty)
-	}
-	// The same project slug under another tenant resolves to no sinks.
-	wrongTenant, _ := dir.EnabledSinks(context.Background(), "other", "axis")
-	if len(wrongTenant) != 0 {
-		t.Fatalf("wrong tenant = %v", wrongTenant)
-	}
-}
-
-func TestBuild(t *testing.T) {
-	cfg := config.Gateway{
-		SMTP: config.SMTP{Addr: "127.0.0.1:25", From: "h@x", FromName: "Herald"},
-		Sinks: map[string]config.Sink{
-			"email": {Kind: "email", Recipient: "a@b"},
-			"hook":  {Kind: "webhook", URL: "https://x"},
-		},
-	}
-	sinks, err := Build(cfg, "user", "pass")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(sinks) != 2 {
-		t.Fatalf("got %d sinks", len(sinks))
-	}
-	email, ok := sinks["email"].(*Email)
+	e, ok := email.(*Email)
 	if !ok {
-		t.Fatalf("email sink = %T", sinks["email"])
+		t.Fatalf("email sink = %T", email)
 	}
-	if email.cfg.FromName != "Herald" {
-		t.Fatalf("from_name not threaded: %q", email.cfg.FromName)
+	if e.cfg.FromName != "Herald" || e.cfg.Recipient != "a@b" {
+		t.Fatalf("email cfg = %+v", e.cfg)
 	}
-	if _, ok := sinks["hook"].(*Webhook); !ok {
-		t.Fatalf("hook sink = %T", sinks["hook"])
+
+	hook, err := buildDestination(domain.Destination{
+		ID: "dst_w", Kind: domain.DestinationWebhook, Target: "https://x",
+	}, smtpCfg, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hook.(*Webhook); !ok {
+		t.Fatalf("hook sink = %T", hook)
 	}
 }
 
-func TestBuildRejectsUnknownKind(t *testing.T) {
-	cfg := config.Gateway{Sinks: map[string]config.Sink{"x": {Kind: "pigeon"}}}
-	if _, err := Build(cfg, "", ""); err == nil {
+func TestBuildDestinationRejectsUnknownKind(t *testing.T) {
+	if _, err := buildDestination(domain.Destination{Kind: "pigeon"}, config.SMTP{}, "", "", nil); err == nil {
 		t.Fatal("expected error")
 	}
 }

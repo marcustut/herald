@@ -14,6 +14,7 @@ import (
 
 	"github.com/marcustut/herald/internal/app"
 	"github.com/marcustut/herald/internal/config"
+	"github.com/marcustut/herald/internal/domain"
 )
 
 func TestBlockedIP(t *testing.T) {
@@ -133,24 +134,23 @@ func TestWebhookMaliciousURLs(t *testing.T) {
 	}
 }
 
-// TestBuildWiresPrivateNetworkPolicy is the end-to-end check that the [security]
-// setting controls whether a private webhook can be reached.
-func TestBuildWiresPrivateNetworkPolicy(t *testing.T) {
+// TestBuildDestinationWiresPrivateNetworkPolicy is the end-to-end check that
+// the [security] setting controls whether a private webhook can be reached.
+func TestBuildDestinationWiresPrivateNetworkPolicy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	mk := func(allow bool) app.Sink {
-		cfg := config.Gateway{
-			Security: config.Security{AllowPrivateNetworks: allow},
-			Sinks:    map[string]config.Sink{"hook": {Kind: "webhook", URL: srv.URL}},
-		}
-		sinks, err := Build(cfg, "", "")
+		client := NewHTTPClient(WebhookTimeout, allow)
+		s, err := buildDestination(domain.Destination{
+			ID: "hook", Kind: domain.DestinationWebhook, Target: srv.URL,
+		}, config.SMTP{}, "", "", client)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return sinks["hook"]
+		return s
 	}
 
 	if err := mk(true).Deliver(context.Background(), sampleEvent()); err != nil {

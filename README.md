@@ -3,7 +3,11 @@
 A small self-hosted gateway that lets coding agents (across all your projects)
 email you a notification when they finish work. Agents POST over HTTPS; the gateway
 authenticates the token, pins the destination, redacts secrets, then queues and
-delivers to one or more sinks (email via SMTP, or an outbound webhook).
+delivers to one or more destinations (email via SMTP, or an outbound webhook).
+
+Destinations are managed per project over the API/dashboard (the account
+surface is part of the product), not in `gateway.toml`; the dispatcher resolves
+each project's verified destinations from the database at delivery time.
 
 The recipient/sink is resolved server-side from the token — agents set no
 headers and cannot redirect mail.
@@ -48,8 +52,9 @@ HERALD_TEST_DATABASE_URL='postgres://postgres@localhost:5432/herald_test?sslmode
 ## Run
 
 ```sh
-# 1. create a token for a project (writes to PostgreSQL)
-herald token create --project axis --database-url "$HERALD_DATABASE_URL"
+# 1. create a token for a project (writes to PostgreSQL); --tenant names the
+#    owner, and a destination for the project is added over the API/dashboard
+herald token create --tenant owner --project axis --database-url "$HERALD_DATABASE_URL"
 # → herald_axis_<secret>   (shown once; put it in that repo's env/secret store)
 
 # 2. run the gateway

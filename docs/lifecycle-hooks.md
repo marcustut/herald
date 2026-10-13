@@ -99,7 +99,7 @@ export HERALD_HOOK_EVENTS=Notification
 
 The [consent policy](consent.md) is the canonical version of all of this,
 including the loop guard — a Herald event must never trigger another
-notification — and how consent relates to the per-project rate limits and
+notification — and how consent relates to the rate limits and
 quotas.
 
 ## Event taxonomy

@@ -124,6 +124,35 @@ func (s *Identities) ensureUser(ctx context.Context, email string, ids app.NewId
 	}, nil
 }
 
+// UserByEmail resolves an existing address to its identity, provisioning
+// nothing. It reports false when no user has the address. The tenant is the
+// user's account's oldest tenant, matching EnsureUser's reuse rule.
+func (s *Identities) UserByEmail(ctx context.Context, email string) (app.Identity, bool, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT u.id, u.account_id, u.email, t.id
+		FROM users u
+		JOIN tenants t ON t.account_id = u.account_id
+		WHERE u.email = $1
+		ORDER BY t.created_at, t.id
+		LIMIT 1`, email)
+	var (
+		id        app.Identity
+		userID    string
+		accountID string
+		tenantID  string
+	)
+	if err := row.Scan(&userID, &accountID, &id.Email, &tenantID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return app.Identity{}, false, nil
+		}
+		return app.Identity{}, false, fmt.Errorf("user by email: %w", err)
+	}
+	id.UserID = domain.UserID(userID)
+	id.AccountID = domain.AccountID(accountID)
+	id.TenantID = domain.TenantID(tenantID)
+	return id, true, nil
+}
+
 func (s *Identities) DeleteAccount(ctx context.Context, account domain.AccountID) error {
 	// Cascades remove the account's users, tenants, projects, destinations and
 	// sessions. Deleting a missing account is a no-op (idempotent).

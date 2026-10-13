@@ -30,7 +30,7 @@ func newDispatcher(deliveries *fakeDeliveries, events *fakeEvents, sinks map[dom
 	return Dispatcher{
 		Deliveries:  deliveries,
 		Events:      events,
-		Sinks:       SinkMap(sinks),
+		Sinks:       staticSinkSource(sinks),
 		Clock:       fakeClock{testNow},
 		Lease:       time.Minute,
 		MaxAttempts: 3,

@@ -122,7 +122,7 @@ pg_restore --dbname=herald_restore --no-owner herald-pre-migrate.dump
 # 3. run the new binary against the restore; Migrate must succeed (a no-op when
 #    the dump already matches) and the checksum guard must pass. Any DB-backed
 #    command runs Migrate; `token create` is a throwaway write in the scratch DB.
-HERALD_DATABASE_URL='postgres:///herald_restore' herald token create --project smoke >/dev/null
+HERALD_DATABASE_URL='postgres:///herald_restore' herald token create --tenant smoke --project smoke >/dev/null
 
 # 4. inspect what is recorded
 psql 'postgres:///herald_restore' \

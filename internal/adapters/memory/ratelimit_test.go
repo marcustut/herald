@@ -64,9 +64,7 @@ func allow(t *testing.T, l *RateLimiter, tenant domain.TenantID, project domain.
 func TestRateLimiterAllowsUpToLimit(t *testing.T) {
 	start := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clock := newStepClock(start)
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: 2, Window: time.Minute, Daily: 100, Monthly: 100},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Requests: 2, Window: time.Minute, Daily: 100, Monthly: 100}, clock, nil)
 
 	for i, want := range []int{1, 0} {
 		d := allow(t, l, tenantA, projA)
@@ -90,9 +88,7 @@ func TestRateLimiterAllowsUpToLimit(t *testing.T) {
 func TestRateLimiterWindowResets(t *testing.T) {
 	start := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clock := newStepClock(start)
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: 1, Window: time.Minute, Daily: 100, Monthly: 100},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Requests: 1, Window: time.Minute, Daily: 100, Monthly: 100}, clock, nil)
 
 	if d := allow(t, l, tenantA, projA); !d.Allowed {
 		t.Fatalf("first call blocked: %+v", d)
@@ -110,9 +106,7 @@ func TestRateLimiterWindowResets(t *testing.T) {
 func TestRateLimiterDailyQuotaResets(t *testing.T) {
 	start := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clock := newStepClock(start)
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Daily: 2},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Daily: 2}, clock, nil)
 
 	allow(t, l, tenantA, projA)
 	allow(t, l, tenantA, projA)
@@ -137,9 +131,7 @@ func TestRateLimiterDailyQuotaResets(t *testing.T) {
 func TestRateLimiterMonthlyQuotaResets(t *testing.T) {
 	start := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clock := newStepClock(start)
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Monthly: 1},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Monthly: 1}, clock, nil)
 
 	if d := allow(t, l, tenantA, projA); !d.Allowed {
 		t.Fatalf("first call blocked: %+v", d)
@@ -159,12 +151,11 @@ func TestRateLimiterMonthlyQuotaResets(t *testing.T) {
 	}
 }
 
+// The one global budget is applied to every partition, while counters stay
+// isolated by (tenant, project): exhausting one leaves the others untouched.
 func TestRateLimiterPartitionsByTenantAndProject(t *testing.T) {
 	clock := newStepClock(time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC))
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: 1, Window: time.Hour, Daily: 100, Monthly: 100},
-		projB: {Requests: 1, Window: time.Hour, Daily: 100, Monthly: 100},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Requests: 1, Window: time.Hour, Daily: 100, Monthly: 100}, clock, nil)
 
 	if d := allow(t, l, tenantA, projA); !d.Allowed {
 		t.Fatalf("tenantA/axis blocked: %+v", d)
@@ -181,19 +172,11 @@ func TestRateLimiterPartitionsByTenantAndProject(t *testing.T) {
 	}
 }
 
-func TestRateLimiterUnconfiguredProjectAllowed(t *testing.T) {
-	clock := newStepClock(time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC))
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{}, clock, nil)
-	if d := allow(t, l, tenantA, projA); !d.Allowed || d.Limit != 0 {
-		t.Fatalf("unconfigured project limited: %+v", d)
-	}
-}
-
 func TestRateLimiterDisabledLimitsAllowed(t *testing.T) {
 	clock := newStepClock(time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC))
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{projA: {}}, clock, nil)
+	l := NewRateLimiter(app.Limits{}, clock, nil)
 	for i := 0; i < 10; i++ {
-		if d := allow(t, l, tenantA, projA); !d.Allowed {
+		if d := allow(t, l, tenantA, projA); !d.Allowed || d.Limit != 0 {
 			t.Fatalf("call %d blocked with no limits: %+v", i, d)
 		}
 	}
@@ -202,9 +185,7 @@ func TestRateLimiterDisabledLimitsAllowed(t *testing.T) {
 func TestRateLimiterConcurrent(t *testing.T) {
 	clock := newStepClock(time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC))
 	const limit = 100
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: limit, Window: time.Hour, Daily: 1000, Monthly: 1000},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Requests: limit, Window: time.Hour, Daily: 1000, Monthly: 1000}, clock, nil)
 
 	var allowed atomic.Int64
 	var wg sync.WaitGroup
@@ -234,9 +215,7 @@ func TestRateLimiterConcurrent(t *testing.T) {
 func TestRateLimiterQueueBackpressure(t *testing.T) {
 	clock := newStepClock(time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC))
 	q := stubQueue{outstanding: map[limitKey]int{}}
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: 100, Window: time.Hour, Daily: 100, Monthly: 100, Queued: 2},
-	}, clock, q)
+	l := NewRateLimiter(app.Limits{Requests: 100, Window: time.Hour, Daily: 100, Monthly: 100, Queued: 2}, clock, q)
 
 	q.outstanding[limitKey{tenantA, projA}] = 1
 	if d := allow(t, l, tenantA, projA); !d.Allowed {
@@ -263,9 +242,7 @@ func TestRateLimiterQueueBackpressure(t *testing.T) {
 func TestRateLimiterRejectionScopes(t *testing.T) {
 	start := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clock := newStepClock(start)
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: 1, Window: time.Minute, Daily: 100, Monthly: 100},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Requests: 1, Window: time.Minute, Daily: 100, Monthly: 100}, clock, nil)
 
 	allow(t, l, tenantA, projA)
 	if d := allow(t, l, tenantA, projA); d.Scope != app.ScopeRequests {
@@ -275,9 +252,7 @@ func TestRateLimiterRejectionScopes(t *testing.T) {
 
 func TestRateLimiterBoundedMemory(t *testing.T) {
 	clock := newStepClock(time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC))
-	l := NewRateLimiter(map[domain.ProjectID]app.Limits{
-		projA: {Requests: 1, Window: time.Hour, Daily: 100, Monthly: 100},
-	}, clock, nil)
+	l := NewRateLimiter(app.Limits{Requests: 1, Window: time.Hour, Daily: 100, Monthly: 100}, clock, nil)
 	l.maxKeys = 1
 
 	allow(t, l, tenantA, projA)

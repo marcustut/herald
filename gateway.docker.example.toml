@@ -11,7 +11,6 @@
 # Bind all interfaces inside the container so the published port can reach it.
 # Do NOT use 127.0.0.1 here.
 addr = "0.0.0.0:8787"
-tenant = "owner"
 
 # Replace with your real SMTP submission host. A container cannot reach the
 # host's loopback, so use a hostname (e.g. host.docker.internal) or another
@@ -21,37 +20,36 @@ addr = "smtp.example.com:587"
 from = "herald@example.com"
 server_name = "smtp.example.com"
 
+# Account/control-plane surface. Accounts are always on when a database is
+# configured; base_url is the public base the API is served under (the
+# magic-link callback path is appended to it, and it may include a prefix such
+# as /api). An https origin makes the session cookie Secure. See
+# docs/control-plane.md.
+[auth]
+base_url = "http://localhost:8787"
+# signup = true lets a request for an unknown address provision and mail a new
+# account; set it false to restrict sign-in to existing accounts.
+signup = true
+
 # Outbound-delivery hardening (see docs/security.md). A webhook URL only ever
-# comes from this file. Non-loopback SMTP always requires STARTTLS with
+# comes from the database. Non-loopback SMTP always requires STARTTLS with
 # certificate verification.
 [security]
-# Optional explicit host allowlist for webhook sinks (case-insensitive; a port
-# is ignored). When non-empty, every webhook host must be listed here.
+# Optional explicit host allowlist for webhook destinations (case-insensitive; a
+# port is ignored). When non-empty, every webhook host must be listed here.
 # webhook_allow_hosts = ["hooks.example.com"]
 # Allow webhook delivery to loopback/private/link-local addresses. Off by
 # default so a webhook cannot reach cloud metadata or intranet services.
 allow_private_networks = false
 
-# Submit limits, enforced per project. Omit to use the built-in bounded
-# defaults (60/1m, 2000/day, 20000/month); override per project with a
-# [projects.<name>.limits] table. See docs/rate-limiting.md.
+# Submit limits, enforced per (tenant, project). Omit to use the built-in
+# bounded defaults (60/1m, 2000/day, 20000/month). See docs/rate-limiting.md.
 [limits]
 requests = 60
 window = "1m"
 daily = 2000
 monthly = 20000
 
-# Each project fans out to the sinks named here.
-[projects.axis]
-sinks = ["email"]
-
-[sinks.email]
-kind = "email"
-recipient = "you@example.com"
-
-# A webhook sink is also supported:
-# [projects.axis]
-# sinks = ["email", "chat"]
-# [sinks.chat]
-# kind = "webhook"
-# url = "https://hooks.example.com/services/XXX/YYY/ZZZ"
+# Projects and destinations are managed over the API/dashboard, not here. A
+# signed-in account creates a project and then one or more destinations; the
+# dispatcher resolves the project's verified destinations at delivery time.
