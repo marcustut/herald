@@ -15,7 +15,7 @@ tenant = "owner"
 
 # Replace with your real SMTP submission host. A container cannot reach the
 # host's loopback, so use a hostname (e.g. host.docker.internal) or another
-# Compose service.
+# Compose service. For Gmail use smtp.gmail.com:587 — see docs/smtp-gmail.md.
 [smtp]
 addr = "smtp.example.com:587"
 from = "herald@example.com"

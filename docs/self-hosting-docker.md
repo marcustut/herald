@@ -16,7 +16,8 @@ restart the queue consumer without touching the API.
 ## Prerequisites
 
 - Docker Engine with the Compose plugin (`docker compose version`).
-- A reachable SMTP submission host if you want email delivery.
+- A reachable SMTP submission host if you want email delivery — see
+  [smtp-gmail.md](smtp-gmail.md) for free credentials from a Gmail account.
 - A hostname/port to publish the API on (put a TLS-terminating proxy in front;
   the container serves plain HTTP).
 
@@ -38,7 +39,8 @@ restart the queue consumer without touching the API.
    ```
 
 3. **Edit `.env`** — set at least `HERALD_POSTGRES_PASSWORD` and a matching
-   `HERALD_DATABASE_URL`, plus the SMTP credentials:
+   `HERALD_DATABASE_URL`, plus the SMTP credentials (see
+   [smtp-gmail.md](smtp-gmail.md) if you need some):
 
    ```dotenv
    HERALD_DATABASE_URL=postgres://herald:change-me@postgres:5432/herald?sslmode=disable

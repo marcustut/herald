@@ -126,6 +126,8 @@ each call creates a distinct event.
   flows.
 - [docs/self-hosting-docker.md](docs/self-hosting-docker.md) — run the stack
   with Docker Compose.
+- [docs/smtp-gmail.md](docs/smtp-gmail.md) — get SMTP credentials (a Gmail App
+  Password) so Herald can email you, plus other providers.
 
 See [DECISIONS-AND-BLOCKERS.md](DECISIONS-AND-BLOCKERS.md).
 
