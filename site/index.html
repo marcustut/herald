@@ -20,8 +20,8 @@
     <span>herald</span>
   </a>
   <nav aria-label="Primary">
-    <a href="#self-host">Self-host</a>
     <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
+    <a href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker</a>
     <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
     <a href="https://github.com/marcustut/herald">GitHub</a>
   </nav>
@@ -53,7 +53,7 @@
       <div class="term">
         <div class="term-bar" aria-hidden="true"><span></span><span></span><span></span><em>claude code</em></div>
         <div class="term-body" aria-hidden="true">
-          <p class="line prompt"><span class="sig">❯</span> <span class="typed">notify me when you're done</span><span class="caret"></span></p>
+          <p class="line prompt"><span class="sig">❯</span><span class="typed">notify me when you're done</span><span class="caret"></span></p>
           <p class="line work w1"><span class="pulse"></span>running tests…</p>
           <p class="line work w2"><span class="pulse"></span>editing 3 files…</p>
           <div class="after">
@@ -104,20 +104,11 @@
     </div>
   </section>
 
-  <section class="pane selfhost" id="self-host" aria-labelledby="host-h">
-    <h2 id="host-h">Self-host now</h2>
-    <p>No account and no build step. Clone, start Compose, create a token, and
-    send your first event in under ten minutes.</p>
-    <p class="cta">
-      <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Quickstart</a>
-      <a class="btn" href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker operations</a>
-    </p>
-  </section>
-
   <section class="demo" id="demo" aria-labelledby="demo-h">
     <h2 id="demo-h">How an agent sends it</h2>
-    <p>Install the skill so an agent notifies you <strong>only when you ask</strong>,
-    then send from the CLI or straight over HTTP.</p>
+    <p>The agent runs this, not you. Install the skill once and the agent calls
+    <code>herald send</code> — or POSTs to the API — when a task finishes, but
+    only if you asked to be notified.</p>
     <figure class="terminal">
       <figcaption>terminal</figcaption>
       <pre><code><span class="c">$</span> herald skill &gt; ~/.claude/skills/herald-notify/SKILL.md
@@ -152,6 +143,7 @@ Subject: [herald] success · axis · herald-cli@build-01 — deploy finished</co
   </div>
   <nav aria-label="Footer">
     <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
+    <a href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker</a>
     <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
     <a href="https://github.com/marcustut/herald">GitHub</a>
     <a href="https://github.com/marcustut/herald/blob/main/LICENSE">MIT License</a>

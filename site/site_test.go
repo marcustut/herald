@@ -45,7 +45,6 @@ func TestLandingPageCoversThePitch(t *testing.T) {
 	html := readFile(t, "index.html")
 	for _, want := range []string{
 		"Who it's for",
-		"Self-host now",
 		"lifecycle",
 		"herald send",
 		"herald skill",

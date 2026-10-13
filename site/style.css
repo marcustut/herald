@@ -85,7 +85,7 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 .term-body{padding:.85rem 1.05rem;display:flex;flex-direction:column;gap:.45rem;min-height:7.5rem;min-width:0}
 .line{margin:0;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prompt{white-space:nowrap}
-.sig{color:var(--accent)}
+.sig{color:var(--accent);margin-right:.35em}
 .c{color:var(--accent)}
 .ok{color:var(--positive)}
 .typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:26ch;animation:type var(--loop) steps(var(--typechars),end) infinite}
