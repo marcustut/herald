@@ -82,6 +82,36 @@ func TestLoadGatewayBadSyntax(t *testing.T) {
 	}
 }
 
+func TestLoadGatewayFromName(t *testing.T) {
+	tests := []struct {
+		name string
+		smtp string
+		want string
+	}{
+		{"omitted defaults to Herald", `addr = "127.0.0.1:587"
+from = "herald@example.com"`, "Herald"},
+		{"explicit value is kept", `addr = "127.0.0.1:587"
+from = "herald@example.com"
+from_name = "Build Bot"`, "Build Bot"},
+		{"explicit empty keeps bare address", `addr = "127.0.0.1:587"
+from = "herald@example.com"
+from_name = ""`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := "[server]\naddr=\"x\"\ntenant=\"t\"\n[smtp]\n" + tt.smtp +
+				"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\"\n"
+			g, err := LoadGateway(writeTemp(t, body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g.SMTP.FromName != tt.want {
+				t.Fatalf("from_name = %q, want %q", g.SMTP.FromName, tt.want)
+			}
+		})
+	}
+}
+
 func TestClient(t *testing.T) {
 	c, err := LoadClient(writeTemp(t, "project = \"axis\"\ngateway = \"https://h.example\"\n"))
 	if err != nil {

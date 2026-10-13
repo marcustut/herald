@@ -79,6 +79,7 @@ func (t smtpTransport) Send(addr string, auth smtp.Auth, from string, to []strin
 type EmailConfig struct {
 	Addr          string
 	From          string
+	FromName      string
 	Recipient     string
 	Username      string
 	Password      string
@@ -158,7 +159,7 @@ func (e *Email) buildMessage(r domain.Event) ([]byte, error) {
 	}
 
 	var msg bytes.Buffer
-	fmt.Fprintf(&msg, "From: %s\r\n", e.cfg.From)
+	fmt.Fprintf(&msg, "From: %s\r\n", formatFrom(e.cfg.From, e.cfg.FromName))
 	fmt.Fprintf(&msg, "To: %s\r\n", e.cfg.Recipient)
 	fmt.Fprintf(&msg, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", rendered.Subject))
 	fmt.Fprintf(&msg, "Date: %s\r\n", e.now().Format(time.RFC1123Z))
@@ -175,4 +176,57 @@ func hostOf(addr string) string {
 		return addr[:i]
 	}
 	return addr
+}
+
+// formatFrom renders the From header. An empty display name yields the bare
+// address; otherwise the name is trimmed of CR/LF (header injection), left
+// unquoted when it is a valid RFC 5322 phrase, quoted when it contains
+// specials, and RFC 2047 encoded when it contains non-ASCII.
+func formatFrom(from, name string) string {
+	name = strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(name))
+	switch {
+	case name == "":
+		return from
+	case !isASCII(name):
+		return mime.QEncoding.Encode("utf-8", name) + " <" + from + ">"
+	case isPhrase(name):
+		return name + " <" + from + ">"
+	default:
+		escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(name)
+		return `"` + escaped + `" <` + from + `>`
+	}
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// isPhrase reports whether s is a non-empty run of atext characters and spaces,
+// which is a valid RFC 5322 phrase without quoting.
+func isPhrase(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r == ' ' {
+			continue
+		}
+		if !isAtext(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAtext(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	}
+	return strings.ContainsRune("!#$%&'*+-/=?^_`{|}~", r)
 }

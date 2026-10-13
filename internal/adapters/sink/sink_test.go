@@ -92,6 +92,66 @@ func TestEmailMessageIsParseable(t *testing.T) {
 	}
 }
 
+func TestFormatFrom(t *testing.T) {
+	const addr = "herald@marcustut.me"
+	tests := []struct {
+		name string
+		from string
+		want string
+	}{
+		{"default", "Herald", "Herald <" + addr + ">"},
+		{"empty keeps bare address", "", addr},
+		{"whitespace only keeps bare address", "   ", addr},
+		{"multi-word phrase", "Herald Build Bot", "Herald Build Bot <" + addr + ">"},
+		{"specials are quoted", "Herald, Inc.", `"Herald, Inc." <` + addr + `>`},
+		{"quotes are escaped", `Herald "The Bot"`, `"Herald \"The Bot\"" <` + addr + `>`},
+		{"unicode is encoded", "Héraut", "=?utf-8?q?H=C3=A9raut?= <" + addr + ">"},
+		{"crlf injection is stripped", "Herald\r\nBcc: evil@x", `"HeraldBcc: evil@x" <` + addr + `>`},
+		{"bare lf injection is stripped", "Herald\nX-Evil: 1", `"HeraldX-Evil: 1" <` + addr + `>`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatFrom(addr, tt.from)
+			if got != tt.want {
+				t.Fatalf("formatFrom(%q) = %q, want %q", tt.from, got, tt.want)
+			}
+			if strings.ContainsAny(got, "\r\n") {
+				t.Fatalf("header contains a line break: %q", got)
+			}
+		})
+	}
+}
+
+func TestEmailFromHeader(t *testing.T) {
+	tests := []struct {
+		fromName string
+		want     string
+	}{
+		{"Herald", "Herald <herald@marcustut.me>"},
+		{"", "herald@marcustut.me"},
+		{"Herald, Inc.", `"Herald, Inc." <herald@marcustut.me>`},
+		{"Héraut", "=?utf-8?q?H=C3=A9raut?= <herald@marcustut.me>"},
+		{"Herald\r\nBcc: evil@x", `"HeraldBcc: evil@x" <herald@marcustut.me>`},
+	}
+	for _, tt := range tests {
+		s := NewEmail("email", EmailConfig{From: "herald@marcustut.me", FromName: tt.fromName, Recipient: "me@x"})
+		msg, err := s.buildMessage(sampleEvent())
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := mail.ReadMessage(strings.NewReader(string(msg)))
+		if err != nil {
+			t.Fatalf("from_name=%q: unparseable: %v", tt.fromName, err)
+		}
+		if got := parsed.Header.Get("From"); got != tt.want {
+			t.Fatalf("from_name=%q: From = %q, want %q", tt.fromName, got, tt.want)
+		}
+		if _, err := parsed.Header.AddressList("From"); err != nil {
+			t.Fatalf("from_name=%q: From is not a valid address list: %v", tt.fromName, err)
+		}
+	}
+}
+
 func TestEmailBuildMessageEscapesHTML(t *testing.T) {
 	rep := sampleEvent()
 	rep.Body = "<script>alert(1)</script>"
@@ -211,7 +271,7 @@ func TestDirectory(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	cfg := config.Gateway{
-		SMTP: config.SMTP{Addr: "127.0.0.1:25", From: "h@x"},
+		SMTP: config.SMTP{Addr: "127.0.0.1:25", From: "h@x", FromName: "Herald"},
 		Sinks: map[string]config.Sink{
 			"email": {Kind: "email", Recipient: "a@b"},
 			"hook":  {Kind: "webhook", URL: "https://x"},
@@ -224,8 +284,12 @@ func TestBuild(t *testing.T) {
 	if len(sinks) != 2 {
 		t.Fatalf("got %d sinks", len(sinks))
 	}
-	if _, ok := sinks["email"].(*Email); !ok {
+	email, ok := sinks["email"].(*Email)
+	if !ok {
 		t.Fatalf("email sink = %T", sinks["email"])
+	}
+	if email.cfg.FromName != "Herald" {
+		t.Fatalf("from_name not threaded: %q", email.cfg.FromName)
 	}
 	if _, ok := sinks["hook"].(*Webhook); !ok {
 		t.Fatalf("hook sink = %T", sinks["hook"])

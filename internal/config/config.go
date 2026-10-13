@@ -23,12 +23,19 @@ type Server struct {
 	Tenant string `toml:"tenant"`
 }
 
+// DefaultFromName is the display name used for the From header when the config
+// file omits [smtp] from_name.
+const DefaultFromName = "Herald"
+
 // SMTP holds non-secret delivery settings; username and password come from the
 // HERALD_SMTP_USERNAME / HERALD_SMTP_PASSWORD environment variables. ServerName
 // is the TLS name to verify against when the SMTP host is dialled by IP.
+// FromName is the display name shown by mail clients; an explicit empty value
+// disables it and sends the bare address.
 type SMTP struct {
 	Addr       string `toml:"addr"`
 	From       string `toml:"from"`
+	FromName   string `toml:"from_name"`
 	ServerName string `toml:"server_name"`
 }
 
@@ -44,8 +51,12 @@ type Sink struct {
 
 func LoadGateway(path string) (Gateway, error) {
 	var g Gateway
-	if _, err := toml.DecodeFile(path, &g); err != nil {
+	md, err := toml.DecodeFile(path, &g)
+	if err != nil {
 		return Gateway{}, fmt.Errorf("decode gateway config: %w", err)
+	}
+	if !md.IsDefined("smtp", "from_name") {
+		g.SMTP.FromName = DefaultFromName
 	}
 	if err := g.Validate(); err != nil {
 		return Gateway{}, err

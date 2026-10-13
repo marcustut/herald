@@ -60,6 +60,9 @@ herald serve --config gateway.toml --database-url "$HERALD_DATABASE_URL"
 herald dispatch --config gateway.toml --database-url "$HERALD_DATABASE_URL" --workers 2
 ```
 
+Emails are sent as `From: Herald <herald@marcustut.me>`. Set `[smtp] from_name`
+in `gateway.toml` to change the display name (`""` sends the bare address).
+
 From inside a project (with `herald.toml` and `HERALD_TOKEN` set):
 
 ```sh
