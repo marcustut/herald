@@ -15,8 +15,7 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.herald;
-      description = "The herald package to run.";
+      description = "The herald package to run, from the herald flake.";
     };
 
     configFile = lib.mkOption {
