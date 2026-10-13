@@ -9,14 +9,12 @@ import (
 )
 
 // The landing page is a shipped artifact: its acceptance criteria (links to
-// install/docs/GitHub, an inert waitlist with consent, no trackers, no personal
-// contact data) are pinned here so a later edit cannot silently regress them.
+// install/docs/GitHub, a named contact, no trackers, self-contained assets) are
+// pinned here so a later edit cannot silently regress them.
 
 var (
 	anchorHref   = regexp.MustCompile(`(?i)<a\s[^>]*href="([^"]*)"`)
 	resourceAttr = regexp.MustCompile(`(?i)<(?:link|script|img)\s[^>]*(?:href|src)="([^"]*)"`)
-	formTag      = regexp.MustCompile(`(?i)<form\b[^>]*>`)
-	checkboxTag  = regexp.MustCompile(`(?i)<input\b[^>]*type="checkbox"[^>]*>`)
 )
 
 func readFile(t *testing.T, name string) string {
@@ -48,8 +46,7 @@ func TestLandingPageCoversThePitch(t *testing.T) {
 	for _, want := range []string{
 		"Who it's for",
 		"Self-host now",
-		"Cloud",
-		"waitlist",
+		"lifecycle",
 		"herald send",
 		"herald skill",
 		"/v1/events",
@@ -57,40 +54,6 @@ func TestLandingPageCoversThePitch(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Errorf("index.html does not mention %q", want)
 		}
-	}
-}
-
-func TestWaitlistFormIsInertUntilWired(t *testing.T) {
-	html := readFile(t, "index.html")
-	tags := formTag.FindAllString(html, -1)
-	if len(tags) == 0 {
-		t.Fatal("index.html has no waitlist form")
-	}
-	for _, tag := range tags {
-		lower := strings.ToLower(tag)
-		if !strings.Contains(lower, `action=""`) {
-			t.Errorf("form should post nowhere by default (action=\"\"), got %s", tag)
-		}
-		if strings.Contains(lower, `method="post"`) || strings.Contains(lower, `method='post'`) {
-			t.Errorf("form must not POST by default, got %s", tag)
-		}
-	}
-
-	boxes := checkboxTag.FindAllString(html, -1)
-	if len(boxes) == 0 {
-		t.Fatal("waitlist form has no consent checkbox")
-	}
-	hasRequiredConsent := false
-	for _, box := range boxes {
-		if strings.Contains(strings.ToLower(box), "required") {
-			hasRequiredConsent = true
-		}
-	}
-	if !hasRequiredConsent {
-		t.Error("consent checkbox must be required")
-	}
-	if !strings.Contains(html, `href="#privacy"`) {
-		t.Error("waitlist form must link to the privacy note")
 	}
 }
 
@@ -109,12 +72,10 @@ func TestLandingPageHasNoThirdPartyResources(t *testing.T) {
 	}
 }
 
-func TestLandingPageHasNoPersonalContactData(t *testing.T) {
+func TestLandingPageShowsContactAndPlaceholders(t *testing.T) {
 	html := readFile(t, "index.html")
-	for _, leak := range []string{"@marcustut", "marcustut.me", "marcustut@"} {
-		if strings.Contains(html, leak) {
-			t.Errorf("landing page leaks personal contact data %q; use example.com", leak)
-		}
+	if !strings.Contains(html, "marcus@marcustut.me") {
+		t.Error("landing page should show the contact address marcus@marcustut.me")
 	}
 	if !strings.Contains(html, "example.com") {
 		t.Error("landing page should use example.com for placeholder addresses/hosts")
