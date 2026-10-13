@@ -88,7 +88,7 @@ cmd/herald ──► internal/cli ──► internal/app ──► internal/doma
 | `internal/adapters/id` | ID generation. |
 | `internal/cli` | Command dispatch: `serve`, `dispatch`, `send`, `token`, `login`, `mcp`, `skill`. |
 | `internal/client` | HTTP client used by `send` and the MCP server. |
-| `internal/credentials` | Per-user `0600` credential file holding the bearer token written by `herald login`. |
+| `internal/credentials` | Per-user `0600` TOML credential file holding bearer tokens keyed by gateway and project, written by `herald login`. |
 | `internal/mcp` | stdio MCP server exposing the `send_event` tool. |
 | `internal/skill` | The agent `SKILL.md` that teaches a harness when to notify. |
 | `internal/render` | Email templates (HTML + text). |

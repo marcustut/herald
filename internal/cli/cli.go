@@ -107,13 +107,14 @@ func clientConfig(configPath string) (gateway, project string, err error) {
 }
 
 // resolveToken resolves the bearer token, preferring the process environment
-// over the user credential file written by `herald login`. herald.toml never
-// carries a token, so the order is: env > credential file > herald.toml.
-func resolveToken() (string, error) {
+// over the user credential file written by `herald login`. The credential file
+// is keyed by gateway+project, so a project-scoped token serves only its own
+// project. herald.toml never carries a token: env > credential file > herald.toml.
+func resolveToken(gateway, project string) (string, error) {
 	if v := os.Getenv("HERALD_TOKEN"); v != "" {
 		return v, nil
 	}
-	return credentials.Token()
+	return credentials.Lookup(gateway, project)
 }
 
 // gatewayClient resolves the gateway URL, token, project, agent and host from a
@@ -126,7 +127,7 @@ func gatewayClient(configPath string) (client.Client, string, string, string, er
 	if gateway == "" {
 		return client.Client{}, "", "", "", fmt.Errorf("gateway URL is missing: set gateway in herald.toml or HERALD_GATEWAY (herald init writes it)")
 	}
-	token, err := resolveToken()
+	token, err := resolveToken(gateway, project)
 	if err != nil {
 		return client.Client{}, "", "", "", err
 	}

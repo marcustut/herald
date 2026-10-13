@@ -64,9 +64,37 @@ token):
 1. `HERALD_TOKEN` in the environment.
 2. The user credential file written by [`herald login`](#herald-login), at
    `$HERALD_CONFIG_DIR/credentials` or `$XDG_CONFIG_HOME/herald/credentials`
-   (on Linux, `~/.config/herald/credentials`). It is written `0600`; it is a
-   single bearer token, so keep it on a machine you trust.
+   (on Linux, `~/.config/herald/credentials`). It is written `0600` and is a
+   TOML document keyed by gateway and project, so several projects (and several
+   gateways) coexist and each resolves its own token. Keep it on a machine you
+   trust.
 3. Nothing else.
+
+The credential file is TOML: a `default_token` fallback plus one `[[credential]]`
+table per gateway+project. A lookup returns the entry matching the active
+`gateway` and `project` (a trailing `/` on the gateway is ignored), else
+`default_token`:
+
+```toml
+# Herald credentials. Keep this file private (chmod 0600).
+# Precedence: HERALD_TOKEN env > the entry for the active gateway+project > default_token.
+default_token = "herald_axis_<secret>"
+
+[[credential]]
+gateway = "https://herald.example.com"
+project = "herald"
+token = "herald_herald_<secret>"
+
+[[credential]]
+gateway = "https://herald.example.com"
+project = "axis"
+token = "herald_axis_<secret>"
+```
+
+`herald login` upserts a single entry and never touches the others, so logging in
+for one project cannot overwrite another. An older single-line file
+(`HERALD_TOKEN=<value>`) is still read as `default_token` and rewritten as TOML on
+the next `herald login`.
 
 If the gateway URL is unset, the command exits with an error before any network
 call. `--config` defaults to `herald.toml` in the current directory; a missing
@@ -125,7 +153,9 @@ herald login --gateway https://cloud.example.com --project axis --test
 What it writes:
 
 - The token to the **credential file**, mode `0600` (see
-  [Configuration](#configuration)). It is never printed.
+  [Configuration](#configuration)). It is upserted under the gateway and project,
+  so it does not overwrite another project's token; with no project it is stored
+  as `default_token`. It is never printed.
 - `project` and `gateway` to `herald.toml` (no secret), so the project is
   configured for `send`, `mcp` and `skill`.
 
@@ -306,9 +336,9 @@ Gateway errors from `send`/`mcp` are printed to stderr as
 ## Security boundaries
 
 - `HERALD_TOKEN` is a secret. Keep it in the environment, a secret manager, or
-  the `0600` credential file written by `herald login` (one bearer token, kept
-  outside the repository); never in `herald.toml`, a repository, or a log line.
-  The CLI never prints it.
+  the `0600` credential file written by `herald login` (tokens keyed by gateway
+  and project, kept outside the repository); never in `herald.toml`, a
+  repository, or a log line. The CLI never prints it.
 - The recipient is pinned server-side from the token and `gateway.toml`. The CLI
   cannot choose where a notification goes.
 - Event text is untrusted. Never paste secrets; the gateway redacts
