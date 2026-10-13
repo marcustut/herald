@@ -135,6 +135,26 @@ func TestDestinationSourceBuildsWebhook(t *testing.T) {
 	}
 }
 
+// The operator allowlist is applied to stored webhook destinations at delivery
+// time: an unlisted host is refused, a listed host is accepted.
+func TestDestinationSourceEnforcesWebhookAllowlist(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_w": destination("dst_w", domain.DestinationWebhook, "https://blocked.example/x", true, now),
+	}}
+	cfg := config.Gateway{Security: config.Security{WebhookAllowHosts: []string{"allowed.example"}}}
+	src := NewDestinationSource(store, cfg, "", "")
+
+	if _, ok, err := src.Sink(context.Background(), "ten_a", "alpha", "dst_w"); err != nil || ok {
+		t.Fatalf("unlisted host resolved: ok=%v err=%v", ok, err)
+	}
+
+	store.byID["dst_w"] = destination("dst_w", domain.DestinationWebhook, "https://allowed.example/x", true, now)
+	if _, ok, err := src.Sink(context.Background(), "ten_a", "alpha", "dst_w"); err != nil || !ok {
+		t.Fatalf("listed host refused: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestDestinationSourceStoreErrorSurfaces(t *testing.T) {
 	boom := errors.New("boom")
 	src := NewDestinationSource(&stubDestinations{err: boom}, config.Gateway{}, "", "")

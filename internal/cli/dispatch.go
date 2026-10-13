@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/marcustut/herald/internal/adapters/sink"
 	"github.com/marcustut/herald/internal/app"
 	"github.com/marcustut/herald/internal/config"
 	"github.com/marcustut/herald/internal/domain"
@@ -54,28 +53,17 @@ func runDispatch(ctx context.Context, args []string, stdout, stderr io.Writer) i
 
 	smtpUser := os.Getenv("HERALD_SMTP_USERNAME")
 	smtpPass := os.Getenv("HERALD_SMTP_PASSWORD")
-	sinks, err := sink.Build(cfg, smtpUser, smtpPass)
-	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
-		return 1
-	}
 
-	// The funnel activation hook is cloud-only: a self-host tenant has no
-	// account, so wiring it would only add a wasted query per delivery.
-	var activation app.ActivationStore
-	if cfg.Cloud.Enabled {
-		activation = st.funnel
-	}
 	dispatcher := app.Dispatcher{
 		Deliveries:  st.deliveries,
 		Events:      st.events,
-		Sinks:       dispatchSinks(cfg, st, sinks, smtpUser, smtpPass),
+		Sinks:       dispatchSinks(cfg, st, smtpUser, smtpPass),
 		Clock:       systemClock{},
 		Lease:       *lease,
 		MaxAttempts: *maxAttempts,
 		Backoff:     domain.Backoff{Base: time.Second, Cap: 5 * time.Minute},
 		Batch:       *batch,
-		Activation:  activation,
+		Activation:  st.funnel,
 		Logger:      logger,
 	}
 

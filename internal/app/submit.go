@@ -99,9 +99,14 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 	// Redact before persistence so the gateway never becomes a secret store.
 	event = event.Redact()
 
-	sinks, err := uc.Sinks.EnabledSinks(ctx, p.TenantID, p.ProjectID)
-	if err != nil {
-		return "", err
+	// A nil directory means the deployment has no destination routing (dev
+	// with no database): the event is stored with no deliveries.
+	var sinks []domain.SinkID
+	if uc.Sinks != nil {
+		sinks, err = uc.Sinks.EnabledSinks(ctx, p.TenantID, p.ProjectID)
+		if err != nil {
+			return "", err
+		}
 	}
 	deliveries := make([]domain.Delivery, len(sinks))
 	for i, s := range sinks {

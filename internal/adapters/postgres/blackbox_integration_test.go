@@ -157,6 +157,14 @@ func (s fixedSinks) EnabledSinks(context.Context, domain.TenantID, domain.Projec
 
 var _ app.SinkDirectory = fixedSinks(nil)
 
+// staticSource is a test app.SinkSource over a fixed map of built sinks.
+type staticSource map[domain.SinkID]app.Sink
+
+func (m staticSource) Sink(_ context.Context, _ domain.TenantID, _ domain.ProjectID, id domain.SinkID) (app.Sink, bool, error) {
+	s, ok := m[id]
+	return s, ok, nil
+}
+
 // harness wires a real PostgreSQL-backed submission path: an HTTP API over the
 // postgres stores, a project token, and a recording sink the dispatcher pushes
 // to.
@@ -203,7 +211,7 @@ func (h *harness) dispatcher(maxAttempts int) app.Dispatcher {
 	return app.Dispatcher{
 		Deliveries:  h.events,
 		Events:      h.events,
-		Sinks:       app.SinkMap{"email": h.sink},
+		Sinks:       staticSource{"email": h.sink},
 		Clock:       h.clock,
 		Lease:       time.Minute,
 		MaxAttempts: maxAttempts,
@@ -560,6 +568,29 @@ func TestIntegrationConcurrentDispatchersDeliverEachOnce(t *testing.T) {
 	}
 }
 
+// TestIntegrationTokenCreateRequiresTenant pins the CLI contract: no --tenant
+// fails, an explicit --tenant issues a project token against the real database.
+func TestIntegrationTokenCreateRequiresTenant(t *testing.T) {
+	url := requireDatabase(t)
+	ctx := context.Background()
+
+	var out, errOut bytes.Buffer
+	code := cli.Run(ctx, []string{"token", "create", "--database-url", url, "--project", "axis"}, strings.NewReader(""), &out, &errOut)
+	if code != 1 || !strings.Contains(errOut.String(), "tenant") {
+		t.Fatalf("without --tenant: code=%d stderr=%q, want a tenant error", code, errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = cli.Run(ctx, []string{"token", "create", "--database-url", url, "--tenant", "ten_cli", "--project", "axis"}, strings.NewReader(""), &out, &errOut)
+	if code != 0 {
+		t.Fatalf("with --tenant: code=%d stderr=%q", code, errOut.String())
+	}
+	if got := strings.TrimSpace(out.String()); !strings.HasPrefix(got, "herald_") {
+		t.Fatalf("token output = %q, want a herald_ project token", got)
+	}
+}
+
 // TestIntegrationQueueDepthAndBackpressure proves the durable queue depth is
 // scoped by (tenant, project) and that the submit limiter applies the Queued
 // cap against it: a congested project is rejected with the queue scope while a
@@ -582,8 +613,8 @@ func TestIntegrationQueueDepthAndBackpressure(t *testing.T) {
 		t.Fatalf("backlog = %d, err %v, want 2", n, err)
 	}
 
-	limiter := memory.NewRateLimiter(map[domain.ProjectID]app.Limits{
-		"axis": {Requests: 1000, Window: time.Minute, Daily: 100000, Monthly: 100000, Queued: 1},
+	limiter := memory.NewRateLimiter(app.Limits{
+		Requests: 1000, Window: time.Minute, Daily: 100000, Monthly: 100000, Queued: 1,
 	}, h.clock, h.events)
 	if d, err := limiter.Allow(h.ctx, "ten_1", "axis"); err != nil || d.Allowed || d.Scope != app.ScopeQueue {
 		t.Fatalf("over-cap decision = %+v, err %v, want queue rejection", d, err)

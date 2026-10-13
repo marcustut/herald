@@ -81,24 +81,27 @@ Never put a credential here. Start from `gateway.example.toml`:
 ```toml
 [server]
 addr = "127.0.0.1:8787"     # loopback; nginx is the only public surface
-tenant = "owner"
 
 [smtp]
 addr = "127.0.0.1:587"      # your submission listener
 from = "herald@example.com"
 server_name = "mail.example.com"  # cert name; required when dialling by IP
 
-[projects.axis]
-sinks = ["email"]
-
-[sinks.email]
-kind = "email"
-recipient = "you@example.com"
+[auth]
+base_url = "https://herald.example.com/api"  # public base; accounts always on
+signup = true
 ```
 
 Keep `addr` on loopback. `server_name` must match the SMTP server's certificate
 when the submission host is dialled by IP (otherwise delivery fails with
 `x509: cannot validate certificate … doesn't contain any IP SANs`).
+
+`base_url` is the public base the API is served under — with `basePath = "/api"`
+it includes that prefix, because the magic-link callback and destination
+verification links are built from it. Destinations are not in `gateway.toml`: a
+signed-in account creates the project and its email/webhook destinations over
+the API or `/dashboard`. Set `signup = false` to run closed (provision accounts
+out of band; unknown addresses are accepted but never mailed or provisioned).
 
 No submission server of your own? [smtp-gmail.md](smtp-gmail.md) shows how to get
 credentials from a Gmail account and point Herald at `smtp.gmail.com:587`.
@@ -174,11 +177,13 @@ systemctl status herald herald-dispatcher
 curl -fsS https://herald.example.com/api/healthz
 ```
 
-Create a token for a project (matches a `[projects.<name>]` in `gateway.toml`):
+Create a token for a project (the account creates the project and its
+destinations over the API or `/dashboard`; `--tenant` names the owner):
 
 ```sh
 sudo -u herald herald token create \
-  --database-url 'postgres:///herald?host=/run/postgresql' --project axis
+  --database-url 'postgres:///herald?host=/run/postgresql' \
+  --tenant owner --project axis
 # → herald_axis_<secret>   (shown once; store it in that project's secret store)
 ```
 

@@ -1,20 +1,20 @@
 # Control plane: sign-in, sessions and deletion
 
-The hosted control plane shares one binary, one host and one `/v1` API — the
-same versioned surface as event submission. It is compiled in but **gated** by
-config. With `cloud.enabled` unset or false (the self-host default) none of the
-routes below are registered and every path answers `404`, exactly as if the
-feature did not exist.
+The control plane shares one binary, one host and one `/v1` API — the same
+versioned surface as event submission. The account surface is part of the
+product: whenever a database is configured the control-plane routes are
+registered. A `--dev` run (no database) has no account surface, so those paths
+answer `404`, exactly as if the feature did not exist.
 
 See [ADR 0001](adr/0001-multi-tenant-ownership.md) for the ownership model
 (account → user / tenant → project → destination) this sits on top of.
 
-## Enabling it
+## Configuring it
 
 ```toml
-[cloud]
-enabled = true
+[auth]
 base_url = "https://cloud.example.com"
+signup = true
 
 [smtp]
 addr = "smtp.example.com:587"
@@ -23,10 +23,19 @@ from = "no-reply@example.com"
 
 `base_url` is the public base under which the API is served; the magic-link
 callback path (`/v1/auth/callback`) is appended to it. It is an absolute URL and
-may include a path prefix such as `/api`. The hosted server refuses to start if
-`cloud.enabled` is true without a valid `base_url` and a usable `[smtp]`
-`addr`/`from`. An `https` origin makes the session cookie `Secure`; the surface
-also requires a database (the in-memory `--dev` mode is refused).
+may include a path prefix such as `/api`. The server refuses to start without a
+valid `base_url` and a usable `[smtp]` `addr`/`from`, because the account surface
+cannot mail a magic link without them. An `https` origin makes the session
+cookie `Secure`. The surface requires a database; the in-memory `--dev` mode has
+none and registers no account routes.
+
+`signup` (default `true`) gates self-service registration. With `signup = true`
+a request for any valid address mails a link and redeems into a new account.
+With `signup = false` a request for an address that has **no account** is
+silently accepted (still `202`) but mails nothing and creates no rows, while an
+**existing** account still receives its link. This lets an operator run a
+closed deployment — provision accounts out of band, then let them sign in —
+without ever revealing whether an address is registered.
 
 Signing in the first time provisions one **account**, one **user** (keyed by the
 email) and one default **tenant**. The session carries that tenant, so hosted
@@ -83,8 +92,8 @@ never names an owner, and a project that belongs to another tenant resolves to
   destination is **never delivered to**: hosted routing resolves a project's
   sinks from the database and includes only enabled, verified rows.
 - **Webhooks are verified by configuration.** A webhook URL has no mailbox to
-  prove; the authenticated owner supplying it is the proof, mirroring the
-  self-host `gateway.toml` model. The dial-time SSRF guard still applies.
+  prove; the authenticated owner supplying it is the proof. The dial-time SSRF
+  guard still applies.
 - **Confirmation is token-only**, like the sign-in callback: the recipient may
   not hold a session. The token row carries the owning `(tenant, project)` and
   destination id, so redemption verifies exactly the destination it was minted
@@ -92,15 +101,16 @@ never names an owner, and a project that belongs to another tenant resolves to
 - **Removal cascades.** Deleting a destination removes its outstanding
   verification tokens, so a stale link cannot resurrect it.
 
-Hosted deployments wire `postgres.Ownership.EnabledSinks` as the sink directory
-when `cloud.enabled` is set, so a project's events fan out only to enabled and
-verified destinations. The dispatcher then resolves each queued delivery against
-the **current** destination row (`sink.DestinationSource`): a destination that is
-removed, disabled or unverified after the event was queued is not delivered to,
-and its delivery dead-letters. Email rows build the same SMTP sink as self-host
-(including the 5xx bounce classification); webhook rows POST through the same
-hardened, SSRF-guarded client. A self-hosted deployment keeps the config-driven
-`sink.Directory` and `sink.Build(gateway.toml)` path unchanged.
+Hosted and self-host deployments share one routing model: the API wires
+`postgres.Ownership.EnabledSinks` as the sink directory, so a project's events
+fan out only to enabled and verified destinations. The dispatcher then resolves
+each queued delivery against the **current** destination row
+(`sink.DestinationSource`): a destination that is removed, disabled or
+unverified after the event was queued is not delivered to, and its delivery
+dead-letters. There is no `gateway.toml` routing: a project with no destinations
+fans out to nothing. Email rows build the SMTP sink (including the 5xx bounce
+classification); webhook rows POST through the same hardened, SSRF-guarded
+client.
 
 ## Magic-link security model
 
@@ -119,7 +129,9 @@ hardened, SSRF-guarded client. A self-hosted deployment keeps the config-driven
   never the query string.
 - **No enumeration.** The request endpoint answers `202` for any syntactically
   valid address, registered or not, and provisions nothing until a link is
-  redeemed.
+  redeemed. With `signup = false` an unknown address still answers `202` but is
+  neither mailed nor stored, so the response cannot be used to probe the
+  account list.
 
 ### Email verification
 
@@ -192,7 +204,7 @@ Provider bounce and complaint notifications are ingested at
 `POST /v1/email/events`, shared-secret authenticated and replay-safe by
 provider event id. A hard bounce or a complaint adds the address to the
 platform-wide suppression list; the hosted delivery path then refuses it
-permanently. The route is only mounted under `[cloud] bounce_webhook = true`
+permanently. The route is only mounted under `[auth] bounce_webhook = true`
 with `HERALD_BOUNCE_WEBHOOK_SECRET` set. See
 [deliverability.md](deliverability.md) for the DNS records and the owner's
 wiring steps.
@@ -226,8 +238,9 @@ destination for the project and redeem its verification link. The token pins the
 recipient server-side, so the destination is the only thing between a fresh
 account and its first email.
 
-On a self-hosted gateway (no `[cloud]`), pass a token the operator issued or
-copy one from a secret store:
+On a self-hosted gateway, pass a token the operator issued (for example with
+`herald token create --tenant <id> --project axis`) or copy one from a secret
+store:
 
 ```sh
 herald login --gateway http://localhost:8787 --project axis --token "$HERALD_TOKEN"
@@ -239,9 +252,12 @@ and the noninteractive CI path.
 
 ## Self-host compatibility
 
-A deployment that never sets `[cloud]` is unchanged: no accounts surface, no
-mail changes, no extra routes. The migration that adds the auth tables is purely
-additive, so an existing Event database upgrades with no data loss.
+A self-hosted deployment configures `[auth] base_url` and a usable `[smtp]`
+just like the hosted one — accounts are part of the product, not a hosted-only
+switch. The migration that adds the auth tables is purely additive, so an
+existing Event database upgrades with no data loss. To run closed, set
+`signup = false` and provision accounts out of band: an unknown address is
+accepted but never provisioned or mailed, and existing accounts still sign in.
 
 ## Deferred
 

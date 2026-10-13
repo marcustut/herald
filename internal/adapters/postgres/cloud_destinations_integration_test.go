@@ -213,6 +213,38 @@ func TestIntegrationHostedUnknownSinkIsDeadLetter(t *testing.T) {
 	assertDead(t, ctx, events, "del_ghost")
 }
 
+// TestIntegrationNoDestinationsDeliversNothing proves the DB-only routing rule
+// with no config fallback: a project with no destinations fans out to nothing,
+// the dispatcher delivers nothing, and no transport is ever reached.
+func TestIntegrationNoDestinationsDeliversNothing(t *testing.T) {
+	pool, ctx := openMigrated(t)
+	store := postgres.NewOwnership(pool)
+	events := postgres.NewEvents(pool)
+	clock := newFakeClock()
+	now := clock.Now()
+	seedHosted(t, ctx, pool, store, "acct_1", "ten_1", "axis", now)
+
+	transport := &recordingTransport{}
+	cfg := config.Gateway{SMTP: config.SMTP{Addr: "127.0.0.1:25", From: "herald@example.com"}}
+	source := sink.NewDestinationSource(store, cfg, "", "").WithMailTransport(transport)
+
+	submitEvent(t, ctx, events, store, clock, "ten_1", "axis")
+
+	queued, err := events.ListDeliveries(ctx, app.DeliveryFilter{}, 0)
+	if err != nil {
+		t.Fatalf("list deliveries: %v", err)
+	}
+	if len(queued) != 0 {
+		t.Fatalf("queued = %+v, want no deliveries", queued)
+	}
+	if n, err := hostedDispatcher(events, source, clock).ProcessBatch(ctx); err != nil || n != 0 {
+		t.Fatalf("process n=%d err=%v, want 0", n, err)
+	}
+	if got := transport.recipients(); len(got) != 0 {
+		t.Fatalf("recipients = %v, want none", got)
+	}
+}
+
 func deliveryIDs(t *testing.T, ctx context.Context, events *postgres.Events) []domain.DeliveryID {
 	t.Helper()
 	rows, err := events.ListDeliveries(ctx, app.DeliveryFilter{}, 0)

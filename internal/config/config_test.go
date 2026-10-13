@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/marcustut/herald/internal/domain"
 )
 
 func writeTemp(t *testing.T, body string) string {
@@ -21,26 +19,14 @@ func writeTemp(t *testing.T, body string) string {
 const validGateway = `
 [server]
 addr = "127.0.0.1:8787"
-tenant = "owner"
 
 [smtp]
 addr = "127.0.0.1:587"
 from = "herald@example.com"
 server_name = "mail.example.com"
 
-[projects.axis]
-sinks = ["email", "slack"]
-
-[projects.finance]
-sinks = ["email"]
-
-[sinks.email]
-kind = "email"
-recipient = "herald@example.com"
-
-[sinks.slack]
-kind = "webhook"
-url = "https://hooks.example.com/x"
+[auth]
+base_url = "https://cloud.example.com"
 `
 
 func TestLoadGatewayValid(t *testing.T) {
@@ -48,11 +34,25 @@ func TestLoadGatewayValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.Server.Tenant != "owner" || len(g.Projects) != 2 {
-		t.Fatalf("got %+v", g)
+	if g.Auth.BaseURL != "https://cloud.example.com" {
+		t.Fatalf("base_url = %q", g.Auth.BaseURL)
+	}
+	// Signup defaults to true when the field is omitted.
+	if !g.Auth.Signup {
+		t.Fatal("signup should default to true")
 	}
 	if g.SMTP.ServerName != "mail.example.com" {
 		t.Fatalf("server_name = %q", g.SMTP.ServerName)
+	}
+}
+
+func TestLoadGatewaySignupExplicit(t *testing.T) {
+	g, err := LoadGateway(writeTemp(t, validGateway+"signup = false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Auth.Signup {
+		t.Fatal("signup = false not parsed")
 	}
 }
 
@@ -61,14 +61,12 @@ func TestLoadGatewayInvalid(t *testing.T) {
 		name string
 		body string
 	}{
-		{"missing addr", "[server]\ntenant=\"x\"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\""},
-		{"missing tenant", "[server]\naddr=\"x\"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\""},
-		{"no projects", "[server]\naddr=\"x\"\ntenant=\"t\""},
-		{"project no sinks", "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[]"},
-		{"unknown sink ref", "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"nope\"]"},
-		{"unknown kind", "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"carrier-pigeon\""},
-		{"email no recipient", "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\""},
-		{"webhook no url", "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"w\"]\n[sinks.w]\nkind=\"webhook\""},
+		{"missing addr", "[server]\n[smtp]\naddr=\"a\"\nfrom=\"f\"\n[auth]\nbase_url=\"https://x\""},
+		{"missing base_url", "[server]\naddr=\"x\"\n[smtp]\naddr=\"a\"\nfrom=\"f\""},
+		{"relative base_url", "[server]\naddr=\"x\"\n[smtp]\naddr=\"a\"\nfrom=\"f\"\n[auth]\nbase_url=\"/api\""},
+		{"non-http base_url", "[server]\naddr=\"x\"\n[smtp]\naddr=\"a\"\nfrom=\"f\"\n[auth]\nbase_url=\"ftp://x\""},
+		{"missing smtp addr", "[server]\naddr=\"x\"\n[smtp]\nfrom=\"f\"\n[auth]\nbase_url=\"https://x\""},
+		{"missing smtp from", "[server]\naddr=\"x\"\n[smtp]\naddr=\"a\"\n[auth]\nbase_url=\"https://x\""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,6 +80,29 @@ func TestLoadGatewayInvalid(t *testing.T) {
 func TestLoadGatewayBadSyntax(t *testing.T) {
 	if _, err := LoadGateway(writeTemp(t, "not = [valid")); err == nil {
 		t.Fatal("expected decode error")
+	}
+}
+
+// The legacy routing tables are gone: a config that still names them must not
+// silently parse into some other meaning. The loader leaves them unread, so the
+// document stays parseable but exposes no project/sink surface.
+func TestGatewayHasNoProjectOrSinkSurface(t *testing.T) {
+	legacy := validGateway + `
+[projects.axis]
+sinks = ["email"]
+
+[sinks.email]
+kind = "email"
+recipient = "a@b"
+`
+	g, err := LoadGateway(writeTemp(t, legacy))
+	if err != nil {
+		t.Fatalf("legacy tables should be ignored, got %v", err)
+	}
+	// The struct has no such fields; a parsed gateway carries only server/smtp/
+	// security/limits/auth. We assert the fields the rest of the code relies on.
+	if g.Server.Addr == "" || g.Auth.BaseURL == "" {
+		t.Fatalf("gateway not parsed: %+v", g)
 	}
 }
 
@@ -102,8 +123,7 @@ from_name = ""`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := "[server]\naddr=\"x\"\ntenant=\"t\"\n[smtp]\n" + tt.smtp +
-				"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\"\n"
+			body := "[server]\naddr=\"x\"\n[smtp]\n" + tt.smtp + "\n[auth]\nbase_url=\"https://x\"\n"
 			g, err := LoadGateway(writeTemp(t, body))
 			if err != nil {
 				t.Fatal(err)
@@ -120,96 +140,35 @@ func TestLimitsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := g.EffectiveLimits()[domain.ProjectID("axis")]
-	want := struct {
-		requests int
-		window   time.Duration
-		daily    int
-		monthly  int
-	}{DefaultRequests, time.Minute, DefaultDaily, DefaultMonthly}
-	if got.Requests != want.requests || got.Window != want.window || got.Daily != want.daily || got.Monthly != want.monthly {
-		t.Fatalf("effective limits = %+v", got)
+	got := g.Limits
+	if got.Requests != DefaultRequests || got.Window != DefaultWindow || got.Daily != DefaultDaily || got.Monthly != DefaultMonthly {
+		t.Fatalf("limits = %+v", got)
 	}
-	// Backpressure is off unless configured, so self-host is unchanged.
 	if got.Queued != 0 {
 		t.Fatalf("queued default = %d, want 0", got.Queued)
 	}
-}
-
-func TestLimitsQueuedBackpressure(t *testing.T) {
-	body := `
-[server]
-addr = "127.0.0.1:8787"
-tenant = "owner"
-
-[limits]
-queued = 100
-
-[projects.axis]
-sinks = ["email"]
-
-[projects.axis.limits]
-queued = 5
-
-[projects.finance]
-sinks = ["email"]
-
-[sinks.email]
-kind = "email"
-recipient = "herald@example.com"
-`
-	g, err := LoadGateway(writeTemp(t, body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	limits := g.EffectiveLimits()
-	if got := limits[domain.ProjectID("axis")].Queued; got != 5 {
-		t.Fatalf("axis queued = %d, want 5", got)
-	}
-	if got := limits[domain.ProjectID("finance")].Queued; got != 100 {
-		t.Fatalf("finance queued = %d, want 100", got)
+	appLimits := g.Limits.AppLimits()
+	if appLimits.Window != time.Minute || appLimits.Requests != DefaultRequests {
+		t.Fatalf("app limits = %+v", appLimits)
 	}
 }
 
-func TestLimitsGlobalAndProjectOverride(t *testing.T) {
-	body := `
-[server]
-addr = "127.0.0.1:8787"
-tenant = "owner"
-
+func TestLimitsGlobal(t *testing.T) {
+	body := validGateway + `
 [limits]
 requests = 10
 window = "30s"
 daily = 500
 monthly = 9000
-
-[projects.axis]
-sinks = ["email"]
-
-[projects.axis.limits]
-requests = 99
-window = "2m"
-
-[projects.finance]
-sinks = ["email"]
-
-[sinks.email]
-kind = "email"
-recipient = "herald@example.com"
+queued = 100
 `
 	g, err := LoadGateway(writeTemp(t, body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	limits := g.EffectiveLimits()
-
-	axis := limits[domain.ProjectID("axis")]
-	if axis.Requests != 99 || axis.Window != 2*time.Minute || axis.Daily != 500 || axis.Monthly != 9000 {
-		t.Fatalf("axis = %+v", axis)
-	}
-	finance := limits[domain.ProjectID("finance")]
-	if finance.Requests != 10 || finance.Window != 30*time.Second || finance.Daily != 500 || finance.Monthly != 9000 {
-		t.Fatalf("finance = %+v", finance)
+	got := g.Limits.AppLimits()
+	if got.Requests != 10 || got.Window != 30*time.Second || got.Daily != 500 || got.Monthly != 9000 || got.Queued != 100 {
+		t.Fatalf("limits = %+v", got)
 	}
 }
 
@@ -222,75 +181,12 @@ func TestLimitsInvalid(t *testing.T) {
 		{"zero window", "[limits]\nwindow=\"0s\""},
 		{"negative requests", "[limits]\nrequests=-1"},
 		{"negative queued", "[limits]\nqueued=-1"},
-		{"project bad window", "[projects.a.limits]\nwindow=\"x\""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := "[server]\naddr=\"x\"\ntenant=\"t\"\n" + tt.body +
-				"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\"\n"
+			body := "[server]\naddr=\"x\"\n[smtp]\naddr=\"a\"\nfrom=\"f\"\n[auth]\nbase_url=\"https://x\"\n" + tt.body
 			if _, err := LoadGateway(writeTemp(t, body)); err == nil {
 				t.Fatal("expected error")
-			}
-		})
-	}
-}
-
-func TestWebhookURLValidation(t *testing.T) {
-	tests := []struct {
-		name string
-		url  string
-		ok   bool
-	}{
-		{"https", "https://hooks.example.com/x", true},
-		{"http", "http://127.0.0.1:9000/x", true},
-		{"file", "file:///etc/passwd", false},
-		{"ftp", "ftp://evil.example/x", false},
-		{"no host", "http://", false},
-		{"relative", "/x", false},
-		{"empty", "", false},
-		{"garbage", "://bad url", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"w\"]\n" +
-				"[sinks.w]\nkind=\"webhook\"\nurl=\"" + tt.url + "\"\n"
-			_, err := LoadGateway(writeTemp(t, body))
-			if tt.ok && err != nil {
-				t.Fatalf("url %q rejected: %v", tt.url, err)
-			}
-			if !tt.ok && err == nil {
-				t.Fatalf("url %q accepted", tt.url)
-			}
-		})
-	}
-}
-
-func TestSecurityWebhookAllowlist(t *testing.T) {
-	body := func(security, url string) string {
-		return "[server]\naddr=\"x\"\ntenant=\"t\"\n" + security +
-			"\n[projects.a]\nsinks=[\"w\"]\n[sinks.w]\nkind=\"webhook\"\nurl=\"" + url + "\"\n"
-	}
-	tests := []struct {
-		name     string
-		security string
-		url      string
-		ok       bool
-	}{
-		{"listed host", "[security]\nwebhook_allow_hosts=[\"hooks.example.com\"]", "https://hooks.example.com/x", true},
-		{"port in allowlist is ignored", "[security]\nwebhook_allow_hosts=[\"hooks.example.com:443\"]", "https://hooks.example.com/x", true},
-		{"case-insensitive", "[security]\nwebhook_allow_hosts=[\"HOOKS.EXAMPLE.COM\"]", "https://hooks.example.com/x", true},
-		{"unlisted host", "[security]\nwebhook_allow_hosts=[\"hooks.example.com\"]", "https://evil.example/x", false},
-		{"empty allowlist allows any host", "", "https://anything.example/x", true},
-		{"empty entry rejected", "[security]\nwebhook_allow_hosts=[\"\"]", "https://hooks.example.com/x", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := LoadGateway(writeTemp(t, body(tt.security, tt.url)))
-			if tt.ok && err != nil {
-				t.Fatalf("rejected: %v", err)
-			}
-			if !tt.ok && err == nil {
-				t.Fatal("accepted, want error")
 			}
 		})
 	}
@@ -306,6 +202,15 @@ func TestSecurityAllowPrivateNetworks(t *testing.T) {
 	}
 	if len(g.Security.WebhookAllowHosts) != 0 {
 		t.Fatalf("unexpected allowlist: %v", g.Security.WebhookAllowHosts)
+	}
+}
+
+func TestSecurityWebhookAllowlistValidation(t *testing.T) {
+	if _, err := LoadGateway(writeTemp(t, validGateway+"\n[security]\nwebhook_allow_hosts=[\"\"]\n")); err == nil {
+		t.Fatal("empty allowlist entry should fail")
+	}
+	if _, err := LoadGateway(writeTemp(t, validGateway+"\n[security]\nwebhook_allow_hosts=[\"hooks.example.com\"]\n")); err != nil {
+		t.Fatalf("valid allowlist rejected: %v", err)
 	}
 }
 
@@ -329,52 +234,28 @@ func TestClient(t *testing.T) {
 	}
 }
 
-// The cloud section gates the hosted accounts surface; a disabled or absent
-// section must leave existing self-host configs untouched, and an enabled one
-// must be complete enough to mail a magic link.
-func TestCloudGate(t *testing.T) {
-	base := "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\"\n"
+// The auth surface requires a public base URL and a usable SMTP path. Bounce
+// webhook is a plain boolean here; the secret env is checked at startup.
+func TestAuthGate(t *testing.T) {
+	base := "[server]\naddr=\"x\"\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"herald@example.com\"\n"
 
-	t.Run("absent is disabled", func(t *testing.T) {
-		g, err := LoadGateway(writeTemp(t, base))
+	t.Run("prefix path base_url is allowed", func(t *testing.T) {
+		g, err := LoadGateway(writeTemp(t, base+"[auth]\nbase_url=\"https://example.com/api\"\n"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if g.Cloud.Enabled {
-			t.Fatal("cloud enabled without a [cloud] table")
+		if g.Auth.BaseURL != "https://example.com/api" {
+			t.Fatalf("base_url = %q", g.Auth.BaseURL)
 		}
 	})
 
-	t.Run("disabled with base_url is allowed", func(t *testing.T) {
-		g, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=false\nbase_url=\"https://cloud.example.com\"\n"))
+	t.Run("bounce webhook parses", func(t *testing.T) {
+		g, err := LoadGateway(writeTemp(t, base+"[auth]\nbase_url=\"https://cloud.example.com\"\nbounce_webhook=true\n"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if g.Cloud.Enabled {
-			t.Fatal("cloud.enabled = false but Enabled is true")
-		}
-	})
-
-	t.Run("enabled and complete", func(t *testing.T) {
-		g, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=true\nbase_url=\"https://cloud.example.com\"\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"herald@example.com\"\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !g.Cloud.Enabled || g.Cloud.BaseURL != "https://cloud.example.com" {
-			t.Fatalf("cloud = %+v", g.Cloud)
-		}
-	})
-
-	t.Run("bounce webhook needs cloud enabled", func(t *testing.T) {
-		if _, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=false\nbounce_webhook=true\n")); err == nil {
-			t.Fatal("bounce_webhook without cloud.enabled should fail")
-		}
-		g, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=true\nbase_url=\"https://cloud.example.com\"\nbounce_webhook=true\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"herald@example.com\"\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !g.Cloud.BounceWebhook {
-			t.Fatal("cloud.bounce_webhook not threaded")
+		if !g.Auth.BounceWebhook {
+			t.Fatal("bounce_webhook not threaded")
 		}
 	})
 
@@ -382,9 +263,9 @@ func TestCloudGate(t *testing.T) {
 		name string
 		body string
 	}{
-		{"missing base_url", base + "[cloud]\nenabled=true\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"a@b\"\n"},
-		{"relative base_url", base + "[cloud]\nenabled=true\nbase_url=\"/cloud\"\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"a@b\"\n"},
-		{"missing smtp", base + "[cloud]\nenabled=true\nbase_url=\"https://cloud.example.com\"\n"},
+		{"missing base_url", base + "[auth]\n"},
+		{"relative base_url", base + "[auth]\nbase_url=\"/cloud\"\n"},
+		{"missing smtp", "[server]\naddr=\"x\"\n[auth]\nbase_url=\"https://cloud.example.com\"\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := LoadGateway(writeTemp(t, tt.body)); err == nil {

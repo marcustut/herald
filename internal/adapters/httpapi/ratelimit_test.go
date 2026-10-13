@@ -24,7 +24,7 @@ type limitedHarness struct {
 }
 
 // newLimitedHarness wires the HTTP server to an in-memory limiter.
-func newLimitedHarness(t *testing.T, limits map[domain.ProjectID]app.Limits) *limitedHarness {
+func newLimitedHarness(t *testing.T, limits app.Limits) *limitedHarness {
 	t.Helper()
 	creds := memory.NewCredentials()
 	events := memory.NewEvents()
@@ -71,16 +71,14 @@ func (h *limitedHarness) post(t *testing.T, path, token, body string) *http.Resp
 	return resp
 }
 
-func limitsFor(projects ...domain.ProjectID) map[domain.ProjectID]app.Limits {
-	m := make(map[domain.ProjectID]app.Limits, len(projects))
-	for _, p := range projects {
-		m[p] = app.Limits{Requests: 2, Window: time.Minute, Daily: 1000, Monthly: 1000}
-	}
-	return m
+// requestBudget is the global budget every (tenant, project) shares in these
+// tests.
+func requestBudget() app.Limits {
+	return app.Limits{Requests: 2, Window: time.Minute, Daily: 1000, Monthly: 1000}
 }
 
 func TestSubmitRateLimitedWithHeaders(t *testing.T) {
-	h := newLimitedHarness(t, limitsFor("axis"))
+	h := newLimitedHarness(t, requestBudget())
 	token := h.token(t, "axis")
 
 	first := h.post(t, "/v1/events", token, validBody)
@@ -121,7 +119,7 @@ func TestSubmitRateLimitedWithHeaders(t *testing.T) {
 // A rejected (invalid) token must stay 401 even when the project budget is gone,
 // so 429 cannot be used to probe for valid tokens.
 func TestRateLimitDoesNotLeakTokenExistence(t *testing.T) {
-	h := newLimitedHarness(t, limitsFor("axis"))
+	h := newLimitedHarness(t, requestBudget())
 	token := h.token(t, "axis")
 	for i := 0; i < 2; i++ {
 		h.post(t, "/v1/events", token, validBody)
@@ -138,7 +136,7 @@ func TestRateLimitDoesNotLeakTokenExistence(t *testing.T) {
 }
 
 func TestRateLimitAppliesToLegacyAlias(t *testing.T) {
-	h := newLimitedHarness(t, limitsFor("axis"))
+	h := newLimitedHarness(t, requestBudget())
 	token := h.token(t, "axis")
 	for i := 0; i < 2; i++ {
 		if got := h.post(t, "/v1/reports", token, validBody).StatusCode; got != http.StatusAccepted {
@@ -171,8 +169,8 @@ func TestSubmitQueueFullIs503(t *testing.T) {
 			IDs:    id.Random{},
 			Clock:  fixedClock{},
 		},
-		Limiter: memory.NewRateLimiter(map[domain.ProjectID]app.Limits{
-			"axis": {Requests: 100, Window: time.Minute, Daily: 1000, Monthly: 1000, Queued: 1},
+		Limiter: memory.NewRateLimiter(app.Limits{
+			Requests: 100, Window: time.Minute, Daily: 1000, Monthly: 1000, Queued: 1,
 		}, fixedClock{}, stubQueue{depth: 5}),
 	}
 	ts := httptest.NewServer(api.Handler())
@@ -195,7 +193,7 @@ func TestSubmitQueueFullIs503(t *testing.T) {
 }
 
 func TestRateLimitPartitionsProjects(t *testing.T) {
-	h := newLimitedHarness(t, limitsFor("axis", "finance"))
+	h := newLimitedHarness(t, requestBudget())
 	axis := h.token(t, "axis")
 	finance := h.token(t, "finance")
 	financeBody := strings.Replace(validBody, `"axis"`, `"finance"`, 1)

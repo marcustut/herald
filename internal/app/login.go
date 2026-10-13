@@ -54,6 +54,11 @@ type Auth struct {
 	LinkBase   string
 	LinkTTL    time.Duration
 	SessionTTL time.Duration
+	// DisableSignup, when true, stops a magic-link request for an address that
+	// has no account from provisioning or mailing one. Existing accounts still
+	// receive links. The zero value (false) keeps signup on, so the default is
+	// unchanged.
+	DisableSignup bool
 }
 
 // RequestMagicLink mails a single-use sign-in link to email. It creates no
@@ -62,10 +67,24 @@ type Auth struct {
 //
 // The response is identical whether or not the address is already registered,
 // so the endpoint cannot be used to enumerate accounts.
+//
+// With DisableSignup set, a request for an address with no account is silently
+// accepted (the caller still answers 202) but mails nothing and writes no rows;
+// an existing account's request proceeds normally.
 func (a Auth) RequestMagicLink(ctx context.Context, email string) error {
 	email, err := domain.NormalizeEmail(email)
 	if err != nil {
 		return err
+	}
+	if a.DisableSignup {
+		if _, ok, err := a.Identities.UserByEmail(ctx, email); err != nil {
+			return err
+		} else if !ok {
+			// Unknown address: pretend it was sent. Provisioning and mailing
+			// nothing keeps the response indistinguishable from a hit and
+			// leaves no rows behind.
+			return nil
+		}
 	}
 	now := a.Clock.Now()
 	raw := a.Secrets.NewSecret()

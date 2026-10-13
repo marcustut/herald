@@ -37,6 +37,11 @@ func (s *cloudIdentities) EnsureUser(_ context.Context, email string, ids app.Ne
 	return id, nil
 }
 
+func (s *cloudIdentities) UserByEmail(_ context.Context, email string) (app.Identity, bool, error) {
+	id, ok := s.byEmail[email]
+	return id, ok, nil
+}
+
 func (s *cloudIdentities) DeleteAccount(_ context.Context, account domain.AccountID) error {
 	for email, id := range s.byEmail {
 		if id.AccountID == account {
@@ -164,16 +169,22 @@ type cloudFixture struct {
 
 func newCloudFixture(t *testing.T, limiter app.LoginLimiter) *cloudFixture {
 	t.Helper()
+	return newCloudFixtureOpts(t, limiter, false)
+}
+
+func newCloudFixtureOpts(t *testing.T, limiter app.LoginLimiter, disableSignup bool) *cloudFixture {
+	t.Helper()
 	auth := &app.Auth{
-		Identities: newCloudIdentities(),
-		Tokens:     newCloudTokens(),
-		Sessions:   newCloudSessions(),
-		Mailer:     &cloudMailer{},
-		Secrets:    &fixedSecrets{},
-		Hasher:     fixedHasher{},
-		IDs:        &cloudIDs{},
-		Clock:      cloudClock{t: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)},
-		LinkBase:   "https://cloud.example.com",
+		Identities:    newCloudIdentities(),
+		Tokens:        newCloudTokens(),
+		Sessions:      newCloudSessions(),
+		Mailer:        &cloudMailer{},
+		Secrets:       &fixedSecrets{},
+		Hasher:        fixedHasher{},
+		IDs:           &cloudIDs{},
+		Clock:         cloudClock{t: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)},
+		LinkBase:      "https://cloud.example.com",
+		DisableSignup: disableSignup,
 	}
 	mail := auth.Mailer.(*cloudMailer)
 	creds := memory.NewCredentials()
@@ -476,5 +487,34 @@ func TestCloudMagicLinkRateLimited(t *testing.T) {
 	}
 	if body.Error.Code != "rate_limited" {
 		t.Fatalf("error code = %q", body.Error.Code)
+	}
+}
+
+// With signup off, an unknown address still gets a non-enumerating 202 but no
+// mail and no rows; an existing account's request still mails a link.
+func TestCloudMagicLinkSignupOff(t *testing.T) {
+	f := newCloudFixtureOpts(t, nil, true)
+
+	resp := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"new@example.com"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("new address status = %d, want 202", resp.StatusCode)
+	}
+	if len(f.mail.msgs) != 0 {
+		t.Fatalf("new address was mailed: %+v", f.mail.msgs)
+	}
+
+	// Provision an existing account directly, then request a link.
+	if _, err := f.auth.Identities.EnsureUser(context.Background(), "known@example.com",
+		app.NewIdentityIDs{Account: "acct_k", User: "usr_k", Tenant: "ten_k"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	resp = f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"known@example.com"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("existing address status = %d, want 202", resp.StatusCode)
+	}
+	if len(f.mail.msgs) != 1 || f.mail.msgs[0].To != "known@example.com" {
+		t.Fatalf("existing address not mailed: %+v", f.mail.msgs)
 	}
 }

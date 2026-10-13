@@ -42,14 +42,11 @@ You can revoke it any time without changing your Google password.
 [smtp]
 addr = "smtp.gmail.com:587"   # STARTTLS submission
 from = "you@gmail.com"        # must be the account, or a verified "Send mail as" alias
-
-[projects.axis]
-sinks = ["email"]
-
-[sinks.email]
-kind = "email"
-recipient = "you@gmail.com"   # send to yourself (or any address you own)
 ```
+
+Then add an email destination `you@gmail.com` (send to yourself, or any address
+you own) for the project over the API or `/dashboard` — destinations are not in
+`gateway.toml`.
 
 Credentials come from the **environment**, never the config file:
 
