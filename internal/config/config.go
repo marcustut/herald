@@ -24,10 +24,12 @@ type Server struct {
 }
 
 // SMTP holds non-secret delivery settings; username and password come from the
-// HERALD_SMTP_USERNAME / HERALD_SMTP_PASSWORD environment variables.
+// HERALD_SMTP_USERNAME / HERALD_SMTP_PASSWORD environment variables. ServerName
+// is the TLS name to verify against when the SMTP host is dialled by IP.
 type SMTP struct {
-	Addr string `toml:"addr"`
-	From string `toml:"from"`
+	Addr       string `toml:"addr"`
+	From       string `toml:"from"`
+	ServerName string `toml:"server_name"`
 }
 
 type Project struct {

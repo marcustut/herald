@@ -13,6 +13,9 @@ tenant = "owner"
 [smtp]
 addr = "127.0.0.1:587"
 from = "herald@marcustut.me"
+# When dialling the submission listener by IP, verify STARTTLS against the
+# certificate's name (the box's cert is for mail.marcustut.me).
+server_name = "mail.marcustut.me"
 
 # Which sinks each project fans out to.
 [projects.axis]

@@ -71,11 +71,12 @@ func build(id string, sc config.Sink, smtpCfg config.SMTP, user, pass string) (a
 	switch sc.Kind {
 	case "email":
 		return NewEmail(domain.SinkID(id), EmailConfig{
-			Addr:      smtpCfg.Addr,
-			From:      smtpCfg.From,
-			Recipient: sc.Recipient,
-			Username:  user,
-			Password:  pass,
+			Addr:          smtpCfg.Addr,
+			From:          smtpCfg.From,
+			Recipient:     sc.Recipient,
+			Username:      user,
+			Password:      pass,
+			TLSServerName: smtpCfg.ServerName,
 		}), nil
 	case "webhook":
 		return NewWebhook(domain.SinkID(id), sc.URL, nil), nil

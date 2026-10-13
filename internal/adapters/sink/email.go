@@ -3,6 +3,8 @@ package sink
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"mime"
 	"mime/multipart"
@@ -17,23 +19,70 @@ import (
 )
 
 // MailTransport sends a raw RFC 5322 message. It matches smtp.SendMail so the
-// real implementation is a one-line wrapper and tests can substitute a fake.
+// real implementation is a thin wrapper and tests can substitute a fake.
 type MailTransport interface {
 	Send(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
-type smtpTransport struct{}
+// smtpTransport submits over SMTP. When the server offers STARTTLS it upgrades
+// and verifies the certificate against tlsServerName — needed when dialling
+// loopback while the certificate is issued for the public hostname.
+type smtpTransport struct {
+	tlsServerName string
+}
 
-func (smtpTransport) Send(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
-	return smtp.SendMail(addr, a, from, to, msg)
+func (t smtpTransport) Send(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = c.Close() }()
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		name := t.tlsServerName
+		if name == "" {
+			name = hostOf(addr)
+		}
+		if err := c.StartTLS(&tls.Config{ServerName: name, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if auth != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
+			return errors.New("smtp: server does not support AUTH")
+		}
+		if err := c.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return err
+	}
+	for _, rcpt := range to {
+		if err := c.Rcpt(rcpt); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 type EmailConfig struct {
-	Addr      string
-	From      string
-	Recipient string
-	Username  string
-	Password  string
+	Addr          string
+	From          string
+	Recipient     string
+	Username      string
+	Password      string
+	TLSServerName string
 }
 
 // Email renders a report to multipart/alternative and submits it over SMTP.
@@ -45,7 +94,12 @@ type Email struct {
 }
 
 func NewEmail(id domain.SinkID, cfg EmailConfig) *Email {
-	return &Email{sinkID: id, cfg: cfg, transport: smtpTransport{}, now: time.Now}
+	return &Email{
+		sinkID:    id,
+		cfg:       cfg,
+		transport: smtpTransport{tlsServerName: cfg.TLSServerName},
+		now:       time.Now,
+	}
 }
 
 // WithTransport overrides the mail transport (tests).

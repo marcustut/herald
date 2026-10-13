@@ -23,6 +23,7 @@ tenant = "owner"
 [smtp]
 addr = "127.0.0.1:587"
 from = "herald@example.com"
+server_name = "mail.example.com"
 
 [projects.axis]
 sinks = ["email", "slack"]
@@ -46,6 +47,9 @@ func TestLoadGatewayValid(t *testing.T) {
 	}
 	if g.Server.Tenant != "owner" || len(g.Projects) != 2 {
 		t.Fatalf("got %+v", g)
+	}
+	if g.SMTP.ServerName != "mail.example.com" {
+		t.Fatalf("server_name = %q", g.SMTP.ServerName)
 	}
 }
 
