@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ .Status }} · {{ .Project }} · {{ .Title }}</title>
+</head>
+<body style="font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; color: #111;">
+  <h2 style="margin: 0 0 4px;">{{ .Status }} · {{ .Project }}</h2>
+  <p style="margin: 0 0 16px; color: #555;">
+    {{ .Agent }}{{ if .Host }}@{{ .Host }}{{ end }} · {{ .Time }}
+  </p>
+  <h3 style="margin: 0 0 8px;">{{ .Title }}</h3>
+  {{ if .Body }}<pre style="white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0 0 16px;">{{ .Body }}</pre>{{ end }}
+  {{ if .Links }}<ul style="margin: 0; padding-left: 20px;">
+    {{ range .Links }}<li><a href="{{ .URL }}">{{ .Label }}</a></li>{{ end }}
+  </ul>{{ end }}
+</body>
+</html>

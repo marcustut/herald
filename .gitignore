@@ -1,0 +1,8 @@
+# Build output
+/bin/
+/herald
+/heraldd
+
+# Test artifacts
+*.test
+coverage.out

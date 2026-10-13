@@ -1,0 +1,228 @@
+// Package httpapi exposes the versioned HTTP contract that other projects call.
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"mime"
+	"net/http"
+	"strings"
+
+	"github.com/marcustut/herald/internal/app"
+	"github.com/marcustut/herald/internal/domain"
+)
+
+const defaultMaxBody = 256 << 10
+
+// Server wires the HTTP surface to the application use cases.
+type Server struct {
+	Auth    app.Authenticator
+	Submit  app.SubmitReport
+	Ready   func(ctx context.Context) error
+	MaxBody int64
+	Logger  *slog.Logger
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/reports", s.handleSubmit)
+	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
+	return mux
+}
+
+type linkDTO struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+type submitPayload struct {
+	Project        string            `json:"project"`
+	Status         string            `json:"status"`
+	Title          string            `json:"title"`
+	Body           string            `json:"body"`
+	Links          []linkDTO         `json:"links"`
+	Context        map[string]string `json:"context"`
+	Agent          string            `json:"agent"`
+	IdempotencyKey string            `json:"idempotencyKey"`
+}
+
+func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	if !isJSON(r.Header.Get("Content-Type")) {
+		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json", "")
+		return
+	}
+
+	max := s.MaxBody
+	if max <= 0 {
+		max = defaultMaxBody
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, max))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "request body too large", "")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid_json", "could not read request body", "")
+		return
+	}
+
+	bearer, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthenticated", "missing bearer token", "")
+		return
+	}
+
+	var payload submitPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "malformed JSON", "")
+		return
+	}
+
+	principal, err := s.Auth.Authenticate(r.Context(), bearer, domain.ProjectID(payload.Project))
+	if err != nil {
+		if errors.Is(err, app.ErrUnauthenticated) {
+			writeError(w, http.StatusUnauthorized, "unauthenticated", "invalid or out-of-scope token", "")
+			return
+		}
+		s.serverError(w, err)
+		return
+	}
+
+	id, err := s.Submit.Handle(r.Context(), principal, payload.request())
+	if err != nil {
+		if fieldFor(err) != "" || isValidation(err) {
+			writeError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), fieldFor(err))
+			return
+		}
+		s.serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"id": string(id)})
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "ok\n")
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	if s.Ready != nil {
+		if err := s.Ready(r.Context()); err != nil {
+			writeError(w, http.StatusServiceUnavailable, "unavailable", "not ready", "")
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "ready\n")
+}
+
+func (s *Server) serverError(w http.ResponseWriter, err error) {
+	if s.Logger != nil {
+		s.Logger.Error("request failed", "error", err)
+	}
+	writeError(w, http.StatusServiceUnavailable, "unavailable", "service unavailable", "")
+}
+
+func (p submitPayload) request() app.SubmitRequest {
+	links := make([]app.LinkInput, len(p.Links))
+	for i, l := range p.Links {
+		links[i] = app.LinkInput{Label: l.Label, URL: l.URL}
+	}
+	return app.SubmitRequest{
+		Status:         p.Status,
+		Title:          p.Title,
+		Body:           p.Body,
+		Links:          links,
+		Context:        p.Context,
+		Agent:          p.Agent,
+		IdempotencyKey: p.IdempotencyKey,
+	}
+}
+
+func bearerToken(header string) (string, bool) {
+	const prefix = "Bearer "
+	if len(header) <= len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
+		return "", false
+	}
+	token := strings.TrimSpace(header[len(prefix):])
+	return token, token != ""
+}
+
+func isJSON(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/json"
+}
+
+func isValidation(err error) bool {
+	for _, sentinel := range []error{
+		domain.ErrInvalidReport,
+		domain.ErrInvalidStatus,
+		domain.ErrInvalidLink,
+		domain.ErrInvalidAgent,
+		domain.ErrInvalidContext,
+		domain.ErrInvalidIdempotencyKey,
+		domain.ErrTitleRequired,
+		domain.ErrTitleTooLong,
+		domain.ErrBodyTooLong,
+		domain.ErrTooManyLinks,
+	} {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
+}
+
+func fieldFor(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrTitleRequired), errors.Is(err, domain.ErrTitleTooLong):
+		return "title"
+	case errors.Is(err, domain.ErrBodyTooLong):
+		return "body"
+	case errors.Is(err, domain.ErrInvalidStatus):
+		return "status"
+	case errors.Is(err, domain.ErrInvalidLink), errors.Is(err, domain.ErrTooManyLinks):
+		return "links"
+	case errors.Is(err, domain.ErrInvalidAgent):
+		return "agent"
+	case errors.Is(err, domain.ErrInvalidContext):
+		return "context"
+	case errors.Is(err, domain.ErrInvalidIdempotencyKey):
+		return "idempotencyKey"
+	default:
+		return ""
+	}
+}
+
+type errorBody struct {
+	Error errorDetail `json:"error"`
+}
+
+type errorDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Field   string `json:"field,omitempty"`
+}
+
+func writeError(w http.ResponseWriter, status int, code, message, field string) {
+	writeJSON(w, status, errorBody{Error: errorDetail{Code: code, Message: message, Field: field}})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}

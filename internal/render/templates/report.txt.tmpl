@@ -1,0 +1,9 @@
+[{{ .Status }}] {{ .Project }} · {{ .Agent }}{{ if .Host }}@{{ .Host }}{{ end }} · {{ .Time }}
+
+{{ .Title }}
+{{ if .Body }}
+{{ .Body }}
+{{ end }}{{ if .Links }}
+Links:
+{{ range .Links }}  {{ .Label }}: {{ .URL }}
+{{ end }}{{ end }}

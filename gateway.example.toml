@@ -1,0 +1,30 @@
+# Example gateway configuration.
+# Non-secret only. SMTP credentials come from the environment:
+#   HERALD_SMTP_USERNAME, HERALD_SMTP_PASSWORD
+# The database comes from HERALD_DATABASE_URL or --database-url.
+
+[server]
+addr = "127.0.0.1:8787"
+tenant = "owner"
+
+# Stalwart submission listener on the box. On marcustut/nixos the local domain
+# is marcustut.me, so the sender must be a real local mailbox (herald@…) and the
+# submission principal's email must match it (must-match-sender = true).
+[smtp]
+addr = "127.0.0.1:587"
+from = "herald@marcustut.me"
+
+# Which sinks each project fans out to.
+[projects.axis]
+sinks = ["email"]
+
+[projects.finance]
+sinks = ["email", "slack"]
+
+[sinks.email]
+kind = "email"
+recipient = "marcus@marcustut.me"
+
+[sinks.slack]
+kind = "webhook"
+url = "https://hooks.slack.com/services/XXX/YYY/ZZZ"

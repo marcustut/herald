@@ -1,0 +1,4 @@
+# Example per-project configuration, committed to the repo (no secrets).
+# The token is read from HERALD_TOKEN, never committed.
+project = "axis"
+gateway = "https://herald.example.com"
