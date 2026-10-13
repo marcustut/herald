@@ -7,11 +7,18 @@ import "strings"
 // string conversion; validation happens where external input enters (token
 // parsing, HTTP decoding), and NewEvent enforces presence on the aggregate.
 type (
-	EventID    string
-	DeliveryID string
-	TenantID   string
-	ProjectID  string
-	SinkID     string
+	EventID       string
+	DeliveryID    string
+	TenantID      string
+	ProjectID     string
+	SinkID        string
+	AccountID     string
+	UserID        string
+	DestinationID string
+	// DeviceID is reserved for M3 (agent/device pairing). No aggregate or table
+	// uses it yet; it is declared so the identifier space is stable when the
+	// devices table lands.
+	DeviceID string
 )
 
 const maxIDLen = 64

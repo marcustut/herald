@@ -75,6 +75,39 @@ type SinkDirectory interface {
 	EnabledSinks(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.SinkID, error)
 }
 
+// ProjectStore persists the tenant-owned projects an account provisions. Every
+// method is scoped by tenant: a project slug is unique per tenant, and a
+// lookup that does not match the owning tenant must report not-found rather
+// than return another tenant's row.
+type ProjectStore interface {
+	// PutProject upserts a project within its own tenant. It can never move an
+	// existing project to another tenant.
+	PutProject(ctx context.Context, p domain.Project) error
+	// Project returns the project with id under tenant.
+	Project(ctx context.Context, tenant domain.TenantID, id domain.ProjectID) (domain.Project, bool, error)
+	// DeleteProject removes the project and its destinations. A project owned
+	// by another tenant is not deleted and reports ErrProjectNotFound.
+	DeleteProject(ctx context.Context, tenant domain.TenantID, id domain.ProjectID) error
+}
+
+// DestinationStore persists project-owned delivery destinations. Every method
+// is scoped by (tenant, project); the ownership of a stored destination is
+// never taken from client input, so a caller cannot read, re-point or delete
+// another tenant's destination even when it knows the id.
+type DestinationStore interface {
+	// PutDestination upserts a destination within its own (tenant, project). An
+	// id that already belongs to a different owner is not modified and reports
+	// ErrDestinationNotFound.
+	PutDestination(ctx context.Context, d domain.Destination) error
+	// Destination returns the destination with id under (tenant, project).
+	Destination(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.DestinationID) (domain.Destination, bool, error)
+	// DestinationsByProject returns every destination owned by (tenant,
+	// project), newest first.
+	DestinationsByProject(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.Destination, error)
+	// DeleteDestination removes the destination under (tenant, project).
+	DeleteDestination(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.DestinationID) error
+}
+
 // EventStore persists a event and its delivery rows atomically, and answers
 // idempotency lookups. Save returns ErrIdempotencyConflict when an event for the
 // same (tenant, project, idempotency key) already exists; the project scope lets

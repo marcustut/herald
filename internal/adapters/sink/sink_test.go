@@ -267,6 +267,11 @@ func TestDirectory(t *testing.T) {
 	if len(empty) != 0 {
 		t.Fatalf("unknown project = %v", empty)
 	}
+	// The same project slug under another tenant resolves to no sinks.
+	wrongTenant, _ := dir.EnabledSinks(context.Background(), "other", "axis")
+	if len(wrongTenant) != 0 {
+		t.Fatalf("wrong tenant = %v", wrongTenant)
+	}
 }
 
 func TestBuild(t *testing.T) {

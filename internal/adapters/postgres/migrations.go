@@ -22,10 +22,62 @@ type migration struct {
 // original idempotent schema blob (create-if-not-exists plus the guarded
 // reports->events / report_id->event_id rename), so a fresh database, a legacy
 // reports database, and an already-migrated Event database all converge on the
-// same shape.
+// same shape. Version 2 adds the durable ownership model.
 var migrations = []migration{
 	{version: 1, name: "baseline", sql: baselineSchema},
+	{version: 2, name: "ownership", sql: ownershipSchema},
 }
+
+// ownershipSchema is migration version 2. It adds the account/user/tenant/
+// project/destination ownership chain. It is purely additive: it creates new
+// tables and never touches events, deliveries, credentials or schema_migrations,
+// so an existing self-host database upgrades with no data loss. Foreign keys
+// cascade so deleting a parent removes its owned children; the legacy event and
+// credential tables keep their free-text tenant/project ids and gain no FK (their
+// rows predate project rows, see docs/adr/0001-multi-tenant-ownership.md).
+const ownershipSchema = `
+CREATE TABLE IF NOT EXISTS accounts (
+	id         text PRIMARY KEY,
+	name       text NOT NULL,
+	created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenants (
+	id         text PRIMARY KEY,
+	account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	name       text NOT NULL,
+	created_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tenants_account ON tenants (account_id);
+
+CREATE TABLE IF NOT EXISTS users (
+	id         text PRIMARY KEY,
+	account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	email      text NOT NULL,
+	created_at timestamptz NOT NULL,
+	UNIQUE (account_id, email)
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+	tenant_id  text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+	id         text NOT NULL,
+	name       text NOT NULL,
+	created_at timestamptz NOT NULL,
+	PRIMARY KEY (tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS destinations (
+	id         text PRIMARY KEY,
+	tenant_id  text NOT NULL,
+	project_id text NOT NULL,
+	kind       text NOT NULL,
+	target     text NOT NULL,
+	enabled    boolean NOT NULL DEFAULT true,
+	created_at timestamptz NOT NULL,
+	FOREIGN KEY (tenant_id, project_id) REFERENCES projects(tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS destinations_project ON destinations (tenant_id, project_id);
+`
 
 const schemaMigrationsDDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (

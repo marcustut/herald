@@ -30,8 +30,11 @@ func (s *Noop) Deliver(_ context.Context, r domain.Event) error {
 	return nil
 }
 
-// Directory resolves a project's enabled sinks from configuration.
+// Directory resolves a project's enabled sinks from configuration. The config
+// file describes one tenant (server.tenant), so a request for the same project
+// slug under a different tenant resolves to no sinks.
 type Directory struct {
+	tenant   domain.TenantID
 	projects map[domain.ProjectID][]domain.SinkID
 }
 
@@ -44,10 +47,13 @@ func NewDirectory(cfg config.Gateway) *Directory {
 		}
 		projects[domain.ProjectID(slug)] = ids
 	}
-	return &Directory{projects: projects}
+	return &Directory{tenant: domain.TenantID(cfg.Server.Tenant), projects: projects}
 }
 
-func (d *Directory) EnabledSinks(_ context.Context, _ domain.TenantID, project domain.ProjectID) ([]domain.SinkID, error) {
+func (d *Directory) EnabledSinks(_ context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.SinkID, error) {
+	if tenant != d.tenant {
+		return nil, nil
+	}
 	ids := d.projects[project]
 	return append([]domain.SinkID(nil), ids...), nil
 }
