@@ -20,7 +20,6 @@
     <span>herald</span>
   </a>
   <nav aria-label="Primary">
-    <a href="#lifecycle">Lifecycle</a>
     <a href="#self-host">Self-host</a>
     <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
     <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
@@ -31,19 +30,50 @@
 <main id="main">
 
   <section class="hero" id="top">
-    <p class="eyebrow">Open source · self-hosted</p>
-    <h1>Your coding agents email you <em>when they finish.</em></h1>
-    <p class="lead">
-      Herald is one small Go binary. Agents <code>POST</code> over HTTPS; the
-      gateway authenticates the token, pins the recipient, redacts secrets, then
-      queues and delivers to your inbox or a webhook. No broker, no dashboard,
-      and no agent choosing where mail goes.
-    </p>
-    <p class="cta">
-      <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Self-host now</a>
-      <a class="btn" href="#lifecycle">See the lifecycle</a>
-    </p>
-    <p class="footnote">Recipients are resolved server-side from the token — agents set no headers and cannot redirect mail.</p>
+    <div class="hero-copy">
+      <p class="eyebrow">Open source · self-hosted</p>
+      <h1>Your coding agents email you <em>when they finish.</em></h1>
+      <p class="lead">
+        Herald is one small Go binary. Agents <code>POST</code> over HTTPS; the
+        gateway authenticates the token, pins the recipient, redacts secrets,
+        then queues and delivers to your inbox or a webhook.
+      </p>
+      <p class="cta">
+        <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Self-host now</a>
+        <a class="btn" href="#self-host">See how it works</a>
+      </p>
+      <p class="footnote">Recipients are resolved server-side from the token — agents set no headers and cannot redirect mail.</p>
+    </div>
+
+    <div class="hero-visual" role="img"
+         aria-label="An agent session: the user asks to be notified when work is done; the agent finishes; Herald delivers an email to the inbox.">
+      <div class="term">
+        <div class="term-bar" aria-hidden="true"><span></span><span></span><span></span><em>claude code</em></div>
+        <div class="term-body" aria-hidden="true">
+          <p class="line prompt"><span class="sig">❯</span> <span class="typed">notify me when you're done</span><span class="caret"></span></p>
+          <p class="line work w1"><span class="pulse"></span>running tests…</p>
+          <p class="line work w2"><span class="pulse"></span>editing 3 files…</p>
+          <div class="after">
+            <p class="line done">done — sending the report</p>
+            <p class="line send"><span class="c">$</span> herald send --status success --title "deploy finished"</p>
+            <p class="line id"><span class="ok">evt_9f3c2a…</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector" aria-hidden="true"><i></i></div>
+
+      <div class="inbox" aria-hidden="true">
+        <span class="inbox-label">inbox</span>
+        <div class="mail">
+          <span class="mail-from">Herald &lt;herald@example.com&gt;</span>
+          <span class="mail-subj">[herald] success · axis · claude-code — deploy finished</span>
+          <span class="mail-body">3 files changed · all tests passed</span>
+        </div>
+      </div>
+
+      <p class="visual-caption">the lifecycle, in a few seconds</p>
+    </div>
   </section>
 
   <section class="who" id="who" aria-labelledby="who-h">
@@ -70,47 +100,6 @@
     </div>
   </section>
 
-  <section class="lifecycle" id="lifecycle" aria-labelledby="lifecycle-h">
-    <h2 id="lifecycle-h">The lifecycle</h2>
-    <p class="lede">You hand work to your agents. They disappear into a
-    long-running task. When it finishes, Herald emails you the summary — once,
-    in your inbox.</p>
-
-    <div class="flow" role="img"
-         aria-label="Lifecycle: you dispatch work to agents; the agents run a long-running task; Herald emails you a summary report when it finishes.">
-      <ol class="steps">
-        <li class="step s1">
-          <span class="k">01 · You work with agents</span>
-          <div class="viz dispatch">
-            <span class="chip you">you</span>
-            <span class="wire" aria-hidden="true"></span>
-            <span class="chip agent">agent</span>
-            <span class="chip agent">agent</span>
-            <span class="chip agent">agent</span>
-          </div>
-        </li>
-        <li class="step s2">
-          <span class="k">02 · Long-running task</span>
-          <div class="viz work">
-            <span class="track" aria-hidden="true"><i></i></span>
-            <span class="elapsed">working…</span>
-          </div>
-        </li>
-        <li class="step s3">
-          <span class="k">03 · Summary report</span>
-          <div class="viz report">
-            <div class="mail">
-              <span class="mail-from">Herald &lt;herald@example.com&gt;</span>
-              <span class="mail-subj">[herald] success · axis · herald-cli — deploy finished</span>
-              <span class="mail-body">3 files changed · all tests passed</span>
-            </div>
-          </div>
-        </li>
-      </ol>
-      <div class="rail" aria-hidden="true"><i></i></div>
-    </div>
-  </section>
-
   <section class="pane selfhost" id="self-host" aria-labelledby="host-h">
     <h2 id="host-h">Self-host now</h2>
     <p>No account and no build step. Clone, start Compose, create a token, and
@@ -122,13 +111,12 @@
   </section>
 
   <section class="demo" id="demo" aria-labelledby="demo-h">
-    <h2 id="demo-h">Demo</h2>
+    <h2 id="demo-h">How an agent sends it</h2>
     <p>Install the skill so an agent notifies you <strong>only when you ask</strong>,
     then send from the CLI or straight over HTTP.</p>
     <figure class="terminal">
       <figcaption>terminal</figcaption>
       <pre><code><span class="c">$</span> herald skill &gt; ~/.claude/skills/herald-notify/SKILL.md
-<span class="c">$</span> export HERALD_TOKEN=herald_axis_&lt;secret&gt;
 
 <span class="c">$</span> herald send --status success --title "deploy finished" \
       --link "PR=https://github.com/example/repo/pull/42"
@@ -136,10 +124,7 @@
 
 <span class="dim">── delivered ──────────────────────────────────────────</span>
 From:    Herald &lt;herald@example.com&gt;
-Subject: [herald] success · axis · herald-cli@build-01 — deploy finished
-
-deploy finished
-PR · https://github.com/example/repo/pull/42</code></pre>
+Subject: [herald] success · axis · herald-cli@build-01 — deploy finished</code></pre>
     </figure>
     <p class="footnote">The gateway is independent of the harness: the CLI, MCP
     (<code>send_event</code>), or a lifecycle hook all hit

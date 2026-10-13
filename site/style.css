@@ -1,8 +1,8 @@
 /* Herald landing page — dark, in the Axis design language.
    Warm near-black ground, a single warm-amber accent, Instrument Serif display
    over DM Sans body and JetBrains Mono code, hairline rules. Fonts are
-   self-hosted and the page is script-free, per site_test.go. The lifecycle
-   animation is CSS-only. */
+   self-hosted and the page is script-free, per site_test.go. The hero
+   animation (a Claude Code session that sends an email) is CSS-only. */
 
 /* ---- Type: self-hosted, latin subset ---- */
 @font-face{font-family:"Instrument Serif";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/instrument-serif-normal-400.woff2) format("woff2")}
@@ -23,7 +23,7 @@
   --font-sans:"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --measure:40rem; --wide:64rem;
-  --loop:13.5s;
+  --loop:6.4s; --typechars:26;
   color-scheme:dark;
 }
 
@@ -64,18 +64,58 @@ h1,h2,h3{font-family:var(--font-display);font-weight:400;line-height:1.08;letter
 h2{font-size:clamp(1.6rem,3.4vw,2rem);margin:0 0 1.25rem}
 h3{font-size:1.25rem;line-height:1.25;margin:0 0 .5rem}
 p{margin:0 0 1rem;max-width:var(--measure);text-wrap:pretty}
-.lede{font-size:1.0625rem;max-width:48ch}
 strong{font-weight:600}
 code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);background:color-mix(in srgb,var(--accent) 10%,transparent);padding:.12em .4em;border-radius:4px}
 .eyebrow{font-size:.75rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin:0 0 1.25rem}
 .footnote{color:var(--muted);font-size:.875rem}
 
-/* ---- Hero ---- */
-.hero{padding-top:5.5rem;padding-bottom:5rem}
-.hero h1{font-size:clamp(2.4rem,6.2vw,4.25rem);max-width:22ch;margin:0 0 1.5rem}
-.hero h1 em{font-style:italic;color:var(--accent-text)}
-.hero .lead{font-size:1.0625rem;max-width:46ch;margin-bottom:2rem}
-.hero .footnote{max-width:52ch;border-left:var(--radius-rule) solid var(--accent);padding-left:.9rem}
+/* ---- Hero: copy + animated visual ---- */
+.hero{display:grid;grid-template-columns:1.02fr .98fr;gap:3.5rem;align-items:center;padding-top:4.5rem;padding-bottom:5rem}
+.hero-copy h1{font-size:clamp(2.3rem,5vw,3.6rem);max-width:20ch;margin:0 0 1.5rem}
+.hero-copy h1 em{font-style:italic;color:var(--accent-text)}
+.hero-copy .lead{font-size:1.0625rem;max-width:44ch;margin-bottom:2rem}
+.hero-copy .footnote{max-width:50ch;border-left:var(--radius-rule) solid var(--accent);padding-left:.9rem}
+
+.hero-visual{display:flex;flex-direction:column;font-family:var(--font-mono);font-size:.75rem;line-height:1.5}
+.term{border:var(--rule) solid var(--line-strong);border-radius:var(--radius-panel);background:var(--surface);overflow:hidden}
+.term-bar{display:flex;align-items:center;gap:.4rem;padding:.6rem .85rem;border-bottom:var(--rule) solid var(--line)}
+.term-bar span{width:9px;height:9px;border-radius:50%;background:var(--line-strong)}
+.term-bar em{margin-left:auto;font-style:normal;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.term-body{padding:.85rem 1.05rem;display:flex;flex-direction:column;gap:.45rem;min-height:7.5rem}
+.line{margin:0;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prompt{white-space:nowrap}
+.sig{color:var(--accent)}
+.c{color:var(--accent)}
+.ok{color:var(--positive)}
+.typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:26ch;animation:type var(--loop) steps(var(--typechars),end) infinite}
+.caret{display:inline-block;width:.55ch;height:1.05em;background:var(--accent);vertical-align:-2px;margin-left:.1ch;opacity:0;animation:caret var(--loop) infinite}
+.work{color:var(--muted);opacity:0}
+.work.w1{animation:w1 var(--loop) infinite}
+.work.w2{animation:w2 var(--loop) infinite}
+.pulse{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--accent);margin-right:.55em;vertical-align:baseline;animation:blink .7s steps(2,start) infinite}
+.after{opacity:1;animation:after var(--loop) infinite;display:flex;flex-direction:column;gap:.5rem}
+.done{color:var(--positive)}
+.send{color:var(--fg)}
+
+.connector{position:relative;height:2rem;margin-left:1.2rem;border-left:var(--rule) solid var(--line)}
+.connector i{position:absolute;left:-4px;top:0;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px color-mix(in srgb,var(--accent) 60%,transparent);opacity:0;animation:travel var(--loop) infinite}
+
+.inbox{position:relative;border:var(--rule) solid var(--line);border-radius:var(--radius-panel);background:var(--surface);padding:.75rem .9rem 1rem}
+.inbox-label{display:block;font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:.6rem}
+.mail{display:flex;flex-direction:column;gap:.28rem;border:var(--rule) solid var(--line-strong);border-radius:var(--radius-card);background:var(--surface-2);padding:.7rem .8rem;animation:mailin var(--loop) infinite}
+.mail-from{color:var(--muted)}
+.mail-subj{color:var(--fg);white-space:normal}
+.mail-body{color:var(--muted)}
+.visual-caption{margin:1rem 0 0;font-size:.75rem;color:var(--muted);font-family:var(--font-sans)}
+
+@keyframes type{0%{width:0}15%{width:26ch}100%{width:26ch}}
+@keyframes caret{0%,13%{opacity:1}16%,100%{opacity:0}}
+@keyframes w1{0%,16%{opacity:0}20%,30%{opacity:1}34%,100%{opacity:0}}
+@keyframes w2{0%,22%{opacity:0}25%,36%{opacity:1}40%,100%{opacity:0}}
+@keyframes after{0%,32%{opacity:0}37%,100%{opacity:1}}
+@keyframes travel{0%,36%{top:0;opacity:0}40%{opacity:1}47%{top:100%;opacity:1}50%,100%{top:100%;opacity:0}}
+@keyframes mailin{0%,42%{opacity:0;transform:translateY(-10px)}52%,97%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px)}}
+@keyframes blink{0%{opacity:1}100%{opacity:.25}}
 
 /* ---- Buttons ---- */
 .cta{display:flex;flex-wrap:wrap;gap:.75rem;margin:0 0 1.5rem}
@@ -95,44 +135,7 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 .grid article p{color:var(--muted)}
 .index{font-family:var(--font-mono);font-size:.75rem;color:var(--accent-text);letter-spacing:.1em;margin:0 0 .75rem}
 
-/* ---- Lifecycle animation (CSS only) ---- */
-.flow{margin-top:2.25rem}
-.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:2rem}
-.step{border-top:var(--rule) solid var(--line-strong);padding-top:1rem;min-height:9.5rem}
-.step .k{display:block;font-family:var(--font-mono);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);margin-bottom:1.1rem}
-.step.s1 .k{animation:hl1 var(--loop) infinite}
-.step.s2 .k{animation:hl2 var(--loop) infinite}
-.step.s3 .k{animation:hl3 var(--loop) infinite}
-
-.viz{position:relative;font-family:var(--font-mono);font-size:.75rem}
-.chip{display:inline-flex;align-items:center;padding:.28rem .6rem;border-radius:var(--radius-pill);border:var(--rule) solid var(--line-strong);background:var(--surface);color:var(--muted);margin:0 .35rem .4rem 0}
-.dispatch .chip.you{border-color:var(--accent);color:var(--accent-text)}
-.dispatch .wire{display:inline-block;width:1.4rem;height:var(--rule);background:var(--line-strong);vertical-align:middle;margin:0 .2rem}
-
-.track{display:block;height:6px;border-radius:var(--radius-pill);background:var(--surface-2);overflow:hidden;margin:.2rem 0 .6rem;max-width:16rem}
-.track i{display:block;height:100%;width:100%;background:var(--accent);border-radius:inherit}
-.step.s2 .track i{animation:fill var(--loop) infinite}
-.elapsed{color:var(--muted)}
-
-.report .mail{display:flex;flex-direction:column;gap:.25rem;border:var(--rule) solid var(--line-strong);border-radius:var(--radius-card);background:var(--surface);padding:.8rem .9rem}
-.mail-from{color:var(--muted)}
-.mail-subj{color:var(--fg)}
-.mail-body{color:var(--muted)}
-.step.s3 .mail{animation:mailin var(--loop) infinite}
-
-/* progress pulse travelling the rail while the lifecycle runs */
-.rail{position:relative;height:2px;background:var(--line);margin-top:2rem}
-.rail i{position:absolute;top:-3px;left:100%;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px color-mix(in srgb,var(--accent) 60%,transparent)}
-.rail i{animation:run var(--loop) infinite}
-
-@keyframes hl1{0%{color:var(--muted)}6%,28%{color:var(--accent-text)}33%,100%{color:var(--muted)}}
-@keyframes hl2{0%,33%{color:var(--muted)}39%,61%{color:var(--accent-text)}66%,100%{color:var(--muted)}}
-@keyframes hl3{0%,66%{color:var(--muted)}72%,94%{color:var(--accent-text)}100%{color:var(--muted)}}
-@keyframes fill{0%,33%{width:0}62%,100%{width:100%}}
-@keyframes mailin{0%,66%{opacity:0;transform:translateY(10px)}74%,99%{opacity:1;transform:none}100%{opacity:0;transform:translateY(10px)}}
-@keyframes run{0%{left:0;opacity:0}5%{opacity:1}90%{opacity:1}94%,100%{left:100%;opacity:0}}
-
-/* ---- Terminal ---- */
+/* ---- Terminal (demo) ---- */
 .terminal{margin:1.75rem 0 1.25rem;border:var(--rule) solid var(--line-strong);border-radius:var(--radius-panel);background:var(--surface);overflow:hidden}
 .terminal figcaption{font-family:var(--font-mono);font-size:.6875rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:.6rem 1.1rem;border-bottom:var(--rule) solid var(--line)}
 .terminal pre{margin:0;padding:1.1rem 1.25rem;overflow-x:auto;font-family:var(--font-mono);font-size:.8125rem;line-height:1.7;color:var(--fg)}
@@ -154,18 +157,22 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 .site-footer .motto{margin:0}
 
 /* ---- Responsive ---- */
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr;gap:2.5rem}
+  .hero-copy h1{max-width:none}
+}
 @media (max-width:760px){
-  .grid-3,.steps{grid-template-columns:1fr}
-  .steps{gap:1.75rem}
+  .grid-3{grid-template-columns:1fr}
   .site-header{flex-direction:column;align-items:flex-start;gap:.75rem}
   section{padding:3.25rem 0}
 }
 
-/* ---- Reduced motion: show the finished state, no animation ---- */
+/* ---- Reduced motion: show the finished frame, no movement ---- */
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important}
   .btn:hover,.brand:hover .brand-mark{transform:none}
-  .step.s2 .track i{width:100%}
-  .step.s3 .mail{opacity:1;transform:none}
-  .rail i{left:100%;opacity:.7}
+  .typed{width:26ch}
+  .caret,.work,.connector i{opacity:0}
+  .after{opacity:1}
+  .mail{opacity:1;transform:none}
 }
