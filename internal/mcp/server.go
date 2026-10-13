@@ -23,6 +23,7 @@ type Submitter interface {
 // Server serves MCP requests from In and writes responses to Out.
 type Server struct {
 	Project string
+	Gateway string
 	Agent   string
 	Host    string
 	Client  Submitter
@@ -65,11 +66,17 @@ func (s *Server) handle(ctx context.Context, req request) (response, bool) {
 		if version == "" {
 			version = defaultProtocolVersion
 		}
-		return ok(req, map[string]any{
+		result := map[string]any{
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "herald", "version": "1.0.0"},
-		}), !isNotification
+		}
+		if s.Gateway != "" {
+			result["instructions"] = fmt.Sprintf(
+				"Herald sends events to the configured gateway %s (project %s).",
+				s.Gateway, s.Project)
+		}
+		return ok(req, result), !isNotification
 	case "notifications/initialized", "notifications/cancelled":
 		return response{}, false
 	case "ping":

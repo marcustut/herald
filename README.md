@@ -63,7 +63,8 @@ herald dispatch --config gateway.toml --database-url "$HERALD_DATABASE_URL" --wo
 Emails are sent as `From: Herald <herald@example.com>`. Set `[smtp] from_name`
 in `gateway.toml` to change the display name (`""` sends the bare address).
 
-From inside a project (with `herald.toml` and `HERALD_TOKEN` set):
+From inside a project (with `herald.toml` and a token from `HERALD_TOKEN` or
+`herald login`):
 
 ```sh
 herald send --status success --title "deploy finished" --link "PR=https://…"
@@ -76,6 +77,7 @@ echo '{"status":"failure","title":"build broke"}' | herald send --json
 |---|---|
 | `herald serve` | run the HTTP API |
 | `herald dispatch` | run the delivery-queue consumer (`--workers N`) |
+| `herald login` | sign in (cloud magic link or self-host token), store the token `0600`, configure the project |
 | `herald send` | submit an event from the CLI (also used by hooks/CI) |
 | `herald token create/revoke` | manage project and scoped credentials |
 | `herald mcp` | MCP server (stdio) exposing a `send_event` tool |

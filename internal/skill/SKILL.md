@@ -70,7 +70,8 @@ JSON
 
 ## Setup
 
-The project provides `herald.toml` (project slug + gateway URL) and sets
-`HERALD_TOKEN` in the environment. `HERALD_AGENT` and `HERALD_HOST` optionally
-identify the agent and the machine. Never choose the recipient yourself — the
-gateway pins it from the token.
+The project provides `herald.toml` (project slug + gateway URL). The bearer
+token comes from `HERALD_TOKEN` in the environment, or from the `0600`
+credential file that `herald login` writes (process env wins). `HERALD_AGENT`
+and `HERALD_HOST` optionally identify the agent and the machine. Never choose
+the recipient yourself — the gateway pins it from the token.
