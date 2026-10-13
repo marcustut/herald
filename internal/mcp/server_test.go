@@ -114,3 +114,24 @@ func TestServeIgnoresInvalidJSON(t *testing.T) {
 		t.Fatalf("expected 1 response, got %d: %q", lines, out.String())
 	}
 }
+
+// TestSendEventToolPinsConsentPolicy keeps the advertised description aligned
+// with docs/consent.md: opt-in / ask first, one event per terminal outcome, and
+// no per-turn noise.
+func TestSendEventToolPinsConsentPolicy(t *testing.T) {
+	desc, _ := sendEventTool()["description"].(string)
+	if desc == "" {
+		t.Fatal("send_event tool has no description")
+	}
+	for _, want := range []string{
+		"explicitly asked to be notified",
+		"default is opt-in",
+		"once per terminal outcome",
+		"never on every turn",
+		"unless the user explicitly asked for each checkpoint",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("send_event description missing %q:\n%s", want, desc)
+		}
+	}
+}

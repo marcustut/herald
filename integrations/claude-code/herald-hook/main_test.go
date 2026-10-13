@@ -63,6 +63,8 @@ func TestDecide(t *testing.T) {
 		{name: "duplicate stop after window is a new transition", input: testInput(), prev: sent, policy: enabledPolicy(), now: fixedNow().Add(31 * time.Second), wantSend: true, wantStatus: statusSuccess, wantOcc: "claude-code-s1-2"},
 		{name: "status change is a new transition", input: hookInput{Event: eventNotification, SessionID: "s1"}, prev: sent, policy: enabledPolicy(), now: fixedNow(), wantSend: true, wantStatus: statusBlocked, wantOcc: "claude-code-s1-2"},
 		{name: "subagent stop when opted in", input: hookInput{Event: eventSubagentStop, SessionID: "s1"}, policy: withEvents("Stop,SubagentStop,Notification"), now: fixedNow(), wantSend: true, wantStatus: statusSuccess, wantOcc: "claude-code-s1-1"},
+		{name: "only blocked opted in ignores finished", input: testInput(), policy: withEvents("Notification"), now: fixedNow(), wantReason: "event_not_enabled"},
+		{name: "only blocked opted in sends blocked", input: hookInput{Event: eventNotification, SessionID: "s1"}, policy: withEvents("Notification"), now: fixedNow(), wantSend: true, wantStatus: statusBlocked, wantOcc: "claude-code-s1-1"},
 		{name: "another session is not debounced", input: hookInput{Event: eventStop, SessionID: "s2", CWD: "/x"}, prev: sent, policy: enabledPolicy(), now: fixedNow(), wantSend: true, wantStatus: statusSuccess, wantOcc: "claude-code-s2-1"},
 		{name: "zero debounce always sends", input: testInput(), prev: state{SessionID: "s1", LastStatus: statusSuccess, LastEvent: eventStop, LastAt: fixedNow().Unix(), Seq: 1}, policy: withDebounce(0), now: fixedNow(), wantSend: true, wantStatus: statusSuccess, wantOcc: "claude-code-s1-2"},
 	}
@@ -343,6 +345,45 @@ func TestRunDisabledSendsNothing(t *testing.T) {
 	}
 	if calls := readCalls(t, record); len(calls) != 0 {
 		t.Fatalf("disabled hook sent %d events", len(calls))
+	}
+}
+
+// TestRunNotifiesEveryTurnWhenDebounceOff covers the explicit "notify me on
+// every turn/checkpoint" opt-in: with the debounce window disabled, each
+// terminal hook for the same session is its own event.
+func TestRunNotifiesEveryTurnWhenDebounceOff(t *testing.T) {
+	bin, record := stubHerald(t)
+	stateDir := t.TempDir()
+	getenv := func(k string) string {
+		switch k {
+		case "HERALD_HOOK_ENABLED":
+			return "1"
+		case "HERALD_HOOK_DEBOUNCE_SECONDS":
+			return "0"
+		case "HERALD_HOOK_BIN":
+			return bin
+		case "HERALD_HOOK_STATE_DIR":
+			return stateDir
+		default:
+			return ""
+		}
+	}
+	hookJSON := `{"hook_event_name":"Stop","session_id":"sess-each","cwd":"/home/u/proj"}`
+	var stderr bytes.Buffer
+	for i := 0; i < 2; i++ {
+		if code := run(context.Background(), strings.NewReader(hookJSON), &stderr, getenv, fixedNow, execSender); code != 0 {
+			t.Fatalf("run exit = %d, want 0", code)
+		}
+	}
+	calls := readCalls(t, record)
+	if len(calls) != 1 { // the stub concatenates runs on one line
+		t.Fatalf("got %d recorded lines, want 1: %q", len(calls), strings.Join(calls, "\n"))
+	}
+	if n := strings.Count(calls[0], "send --status"); n != 2 {
+		t.Fatalf("got %d sends, want 2 (one per turn): %q", n, calls[0])
+	}
+	if !strings.Contains(calls[0], "--occurrence-id claude-code-sess-each-1") || !strings.Contains(calls[0], "--occurrence-id claude-code-sess-each-2") {
+		t.Errorf("occurrence ids = %q, want incrementing per turn", calls[0])
 	}
 }
 
