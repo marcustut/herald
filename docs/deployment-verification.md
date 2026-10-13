@@ -183,5 +183,7 @@ config documents `server_name`.
   `evt_676eabbc24af47ffe3bb537cce51afcc` (`deploy verification issue-12`) and
   `evt_9fe46e50f68b7aa3b439a727d238cbc6` (`legacy alias verify issue-12`); both
   delivered normally.
-- Two throwaway project tokens were issued and **revoked** immediately after
-  use (rows remain with `revoked_at` set). No other production state changed.
+- Four throwaway project tokens were issued and **revoked** immediately after
+  use (two attempts aborted before submitting); rows remain with `revoked_at`
+  set. The two original active credentials are untouched. No other production
+  state changed.
