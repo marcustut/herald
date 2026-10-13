@@ -6,3 +6,7 @@
 # Test artifacts
 *.test
 coverage.out
+
+# Local Compose secrets and gateway config
+.env
+gateway.toml

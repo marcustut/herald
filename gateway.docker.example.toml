@@ -1,0 +1,37 @@
+# Example gateway configuration for the Docker/Compose deployment.
+#
+#   cp gateway.docker.example.toml gateway.toml   # then edit and keep it local
+#
+# gateway.toml is gitignored: it is deployment-specific, not part of the image.
+# Only non-secret settings live here. SMTP credentials come from the environment
+# (HERALD_SMTP_USERNAME / HERALD_SMTP_PASSWORD); the database comes from
+# HERALD_DATABASE_URL. See docs/self-hosting-docker.md.
+
+[server]
+# Bind all interfaces inside the container so the published port can reach it.
+# Do NOT use 127.0.0.1 here.
+addr = "0.0.0.0:8787"
+tenant = "owner"
+
+# Replace with your real SMTP submission host. A container cannot reach the
+# host's loopback, so use a hostname (e.g. host.docker.internal) or another
+# Compose service.
+[smtp]
+addr = "smtp.example.com:587"
+from = "herald@example.com"
+server_name = "smtp.example.com"
+
+# Each project fans out to the sinks named here.
+[projects.axis]
+sinks = ["email"]
+
+[sinks.email]
+kind = "email"
+recipient = "you@example.com"
+
+# A webhook sink is also supported:
+# [projects.axis]
+# sinks = ["email", "chat"]
+# [sinks.chat]
+# kind = "webhook"
+# url = "https://hooks.example.com/services/XXX/YYY/ZZZ"

@@ -1,0 +1,13 @@
+# Never bake secrets or VCS metadata into the build context/image.
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.github
+bin/
+/herald
+/heraldd
+*.test
+coverage.out
+gateway.toml
