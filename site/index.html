@@ -20,8 +20,8 @@
     <span>herald</span>
   </a>
   <nav aria-label="Primary">
-    <a href="#self-host">Self-host</a>
     <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
+    <a href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker</a>
     <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
     <a href="https://github.com/marcustut/herald">GitHub</a>
   </nav>
@@ -34,15 +34,18 @@
       <p class="eyebrow">Open source · self-hosted</p>
       <h1>Your coding agents email you <em>when they finish.</em></h1>
       <p class="lead">
-        Herald is one small Go binary. Agents <code>POST</code> over HTTPS; the
-        gateway authenticates the token, pins the recipient, redacts secrets,
-        then queues and delivers to your inbox or a webhook.
+        Agents run in terminals, in CI, and on other machines — and you end up
+        checking each one to see if it's done. Herald emails you when a task
+        finishes, fails, or gets stuck. One gateway for every project.
       </p>
-      <p class="cta">
-        <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Self-host now</a>
-        <a class="btn" href="#self-host">See how it works</a>
-      </p>
-      <p class="footnote">Recipients are resolved server-side from the token — agents set no headers and cannot redirect mail.</p>
+
+      <div class="install">
+        <p class="install-label">Install the CLI</p>
+        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/marcustut/herald/main/install.sh | sh</code></span><button class="copy" type="button" data-copy="install-cmd" aria-label="Copy install command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
+        <p class="install-next"><a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Then follow the quickstart →</a></p>
+      </div>
+
+      <p class="footnote">The token pins the recipient — agents can't redirect mail.</p>
     </div>
 
     <div class="hero-visual" role="img"
@@ -74,6 +77,7 @@
 
       <p class="visual-caption">the lifecycle, in a few seconds</p>
     </div>
+
   </section>
 
   <section class="who" id="who" aria-labelledby="who-h">
@@ -100,34 +104,26 @@
     </div>
   </section>
 
-  <section class="pane selfhost" id="self-host" aria-labelledby="host-h">
-    <h2 id="host-h">Self-host now</h2>
-    <p>No account and no build step. Clone, start Compose, create a token, and
-    send your first event in under ten minutes.</p>
-    <p class="cta">
-      <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Quickstart</a>
-      <a class="btn" href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker operations</a>
-    </p>
-  </section>
+  <section class="skills" id="skills" aria-labelledby="skills-h">
+    <h2 id="skills-h">Install the skill</h2>
+    <p>You don't run this by hand — the agent does. Install the skill once and
+    the agent calls <code>herald send</code> when a task finishes, but only if
+    you asked. One command covers Claude Code, Codex, and OpenCode:</p>
 
-  <section class="demo" id="demo" aria-labelledby="demo-h">
-    <h2 id="demo-h">How an agent sends it</h2>
-    <p>Install the skill so an agent notifies you <strong>only when you ask</strong>,
-    then send from the CLI or straight over HTTP.</p>
-    <figure class="terminal">
-      <figcaption>terminal</figcaption>
-      <pre><code><span class="c">$</span> herald skill &gt; ~/.claude/skills/herald-notify/SKILL.md
+    <div class="harnesses">
+      <div class="harness">
+        <p class="harness-name">Claude Code · Codex · OpenCode</p>
+        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-add">npx skills add marcustut/herald --skill herald -g</code></span><button class="copy" type="button" data-copy="skill-add" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
+      </div>
+      <div class="harness">
+        <p class="harness-name">Manual — any harness that reads a skill file</p>
+        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-manual">herald skill &gt; ~/.claude/skills/herald/SKILL.md</code></span><button class="copy" type="button" data-copy="skill-manual" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
+      </div>
+    </div>
 
-<span class="c">$</span> herald send --status success --title "deploy finished" \
-      --link "PR=https://github.com/example/repo/pull/42"
-<span class="ok">evt_9f3c2a…</span>
-
-<span class="dim">── delivered ──────────────────────────────────────────</span>
-From:    Herald &lt;herald@example.com&gt;
-Subject: [herald] success · axis · herald-cli@build-01 — deploy finished</code></pre>
-    </figure>
-    <p class="footnote">The gateway is independent of the harness: the CLI, MCP
-    (<code>send_event</code>), or a lifecycle hook all hit
+    <p class="footnote"><code>-g</code> installs globally for supported agents;
+    omit it to install into the current project. The gateway is harness-agnostic —
+    the CLI, MCP (<code>send_event</code>), or a lifecycle hook all hit
     <code>POST /v1/events</code>.</p>
   </section>
 
@@ -148,11 +144,40 @@ Subject: [herald] success · axis · herald-cli@build-01 — deploy finished</co
   </div>
   <nav aria-label="Footer">
     <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
+    <a href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker</a>
     <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
     <a href="https://github.com/marcustut/herald">GitHub</a>
     <a href="https://github.com/marcustut/herald/blob/main/LICENSE">MIT License</a>
   </nav>
 </footer>
 
+<script>
+(function () {
+  var buttons = document.querySelectorAll("[data-copy]");
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].addEventListener("click", function () {
+      var btn = this;
+      var el = document.getElementById(btn.getAttribute("data-copy"));
+      var text = el ? el.textContent : "";
+      var done = function () {
+        btn.classList.add("is-done");
+        btn.setAttribute("aria-label", "Copied");
+        setTimeout(function () { btn.classList.remove("is-done"); btn.setAttribute("aria-label", "Copy install command"); }, 1500);
+      };
+      var fallback = function () {
+        var t = document.createElement("textarea");
+        t.value = text; t.setAttribute("readonly", "");
+        t.style.position = "fixed"; t.style.left = "-9999px";
+        document.body.appendChild(t); t.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(t); done();
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else { fallback(); }
+    });
+  }
+})();
+</script>
 </body>
 </html>

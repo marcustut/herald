@@ -190,7 +190,7 @@ func TestSkillCommand(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
-	if !strings.Contains(out, "name: herald-notify") || !strings.Contains(out, "herald send") {
+	if !strings.Contains(out, "name: herald") || !strings.Contains(out, "herald send") {
 		t.Fatalf("skill output = %q", out)
 	}
 }

@@ -3,7 +3,7 @@
 This is the single, canonical policy for **when Herald is allowed to notify the
 owner**. Every surface follows it:
 
-- the `herald-notify` [skill](skill.md) (`internal/skill/SKILL.md`),
+- the `herald` [skill](skill.md) (`internal/skill/SKILL.md`),
 - the `send_event` [MCP tool](mcp.md) (`internal/mcp/server.go`),
 - the deterministic [lifecycle hooks](lifecycle-hooks.md)
   (`integrations/claude-code/herald-hook`), and
@@ -32,7 +32,7 @@ Consent is expressed per surface; the defaults never notify on their own.
 
 | Surface | Default | Consent is expressed by | Sends |
 |---|---|---|---|
-| Skill (`herald-notify`) | off | user explicitly asks in the conversation | one event per terminal outcome |
+| Skill (`herald`) | off | user explicitly asks in the conversation | one event per terminal outcome |
 | MCP `send_event` | off | user explicitly asks; the model then calls the tool | one event per terminal outcome |
 | Lifecycle hook (`herald-hook`) | **disabled** | `HERALD_HOOK_ENABLED` truthy (`1`/`true`/`yes`/`on`) | one event per terminal transition |
 | `herald send` | manual | the operator runs it | one event per invocation |
