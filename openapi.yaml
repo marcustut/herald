@@ -11,12 +11,11 @@ info:
     deprecated alias that behaves identically and answers with `Deprecation: true`
     and `Link: </v1/events>; rel="successor-version"`.
 
-    The hosted **control plane** shares the same `/v1` surface. It is compiled
-    in but gated by config: with `cloud.enabled` unset (the self-host default)
-    none of the control-plane routes are registered and every path answers
-    `404`, exactly as if the feature did not exist. The control plane also
-    requires a database-backed gateway: the in-memory `--dev` mode refuses to
-    enable it. Once enabled, one signed-in tenant owns projects, tokens and
+    The **control plane** shares the same `/v1` surface. It is part of the
+    product and requires a database-backed gateway: a gateway without a database
+    registers none of the control-plane routes and every such path answers
+    `404`, and the in-memory `--dev` mode has no control plane either. One
+    signed-in tenant owns projects, tokens and
     delivery destinations through a cookie session and a CSRF token. Every
     control-plane route may answer `503 unavailable` when a dependency
     (database, mailer) fails. See
@@ -194,8 +193,8 @@ paths:
         Mails a single-use, 15-minute sign-in link to `email`. Always answers
         `202` for a syntactically valid address, registered or not, so the
         endpoint cannot enumerate accounts. Rate limited per client IP and per
-        target address (10/minute by default). Control-plane route; `404` when
-        the gateway has no `[cloud]` config or no database.
+        target address (10/minute by default). Control-plane route; `404` on a
+        gateway without a database.
       operationId: requestMagicLink
       security: []
       requestBody:
@@ -701,7 +700,7 @@ paths:
         generic shape). Shared-secret authenticated with the
         `HERALD_BOUNCE_WEBHOOK_SECRET`; replay-safe by provider event id. A hard
         bounce or a complaint adds the address to the platform-wide suppression
-        list. Mounted only under `[cloud] bounce_webhook = true` with the secret
+        list. Mounted only under `[auth] bounce_webhook = true` with the secret
         set; otherwise `404`.
       operationId: ingestEmailEvent
       security:
