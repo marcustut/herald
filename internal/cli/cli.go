@@ -25,6 +25,11 @@ Usage:
                [--occurrence-id ID] [--idempotency-key KEY] [--json]
   herald token create --database-url URL --project PROJECT [--tenant ID] [--scoped P1,P2]
   herald token revoke --database-url URL --project PROJECT [--tenant ID]
+  herald delivery list [--state STATE] [--event ID] [--sink ID] [--limit N] [--database-url URL]
+  herald delivery show <id> [--database-url URL]
+  herald delivery retry <id> [--database-url URL]
+  herald delivery requeue [--state dead|pending] [--event ID] [--sink ID] [--database-url URL]
+  herald delivery reclaim [--database-url URL]
   herald mcp   [--config FILE] [--agent NAME] [--host NAME]
   herald skill
   herald version
@@ -45,6 +50,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runSend(ctx, args[1:], stdin, stdout, stderr)
 	case "token":
 		return runToken(ctx, args[1:], stdout, stderr)
+	case "delivery":
+		return runDelivery(ctx, args[1:], stdout, stderr)
 	case "mcp":
 		return runMCP(ctx, args[1:], stdin, stdout, stderr)
 	case "skill":
