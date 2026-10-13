@@ -115,6 +115,17 @@ in
         not be "/".
       '';
     };
+
+    cloudPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/cloud";
+      description = ''
+        URL path prefix the hosted cloud surface (sign-up, projects,
+        destinations, dashboard) is served under. It is proxied to the gateway
+        unchanged, which serves those routes itself. Ignored when basePath is
+        "/" (the whole site is the API). Set to "" to disable.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -196,11 +207,16 @@ in
           forceSSL = true;
           enableACME = true;
           locations =
-            if cfg.basePath == "/" || cfg.basePath == "" then {
+            (if cfg.basePath == "/" || cfg.basePath == "" then {
               "/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}"; };
             } else {
               "${cfg.basePath}/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}/"; };
-            };
+            })
+            // (lib.optionalAttrs
+              (cfg.cloudPath != "" && cfg.basePath != "/" && cfg.basePath != "")
+              {
+                "${cfg.cloudPath}/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}${cfg.cloudPath}/"; };
+              });
         };
       }
     ]))
