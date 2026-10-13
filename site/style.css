@@ -153,14 +153,11 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 .grid article p{color:var(--muted)}
 .index{font-family:var(--font-mono);font-size:.75rem;color:var(--accent-text);letter-spacing:.1em;margin:0 0 .75rem}
 
-/* ---- Terminal (demo) ---- */
-.terminal{margin:1.75rem 0 1.25rem;border:var(--rule) solid var(--line-strong);border-radius:var(--radius-panel);background:var(--surface);overflow:hidden}
-.terminal figcaption{font-family:var(--font-mono);font-size:.6875rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:.6rem 1.1rem;border-bottom:var(--rule) solid var(--line)}
-.terminal pre{margin:0;padding:1.1rem 1.25rem;overflow-x:auto;font-family:var(--font-mono);font-size:.8125rem;line-height:1.7;color:var(--fg)}
-.terminal pre code{background:none;padding:0;border-radius:0;color:inherit;font-size:inherit}
-.terminal .c{color:var(--accent-text)}
-.terminal .ok{color:var(--positive)}
-.terminal .dim{color:var(--muted)}
+
+/* ---- Harness setup ---- */
+.harnesses{display:grid;gap:1.4rem;margin:1.75rem 0 1.25rem;max-width:40rem}
+.harness-name{font-family:var(--font-mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 .5rem}
+.harness .cmd{margin:0}
 
 /* ---- Privacy & contact ---- */
 .privacy ul{list-style:none;margin:0;padding:0;display:grid;gap:1rem;max-width:var(--measure)}
