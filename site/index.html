@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Herald — your coding agents email you when they finish</title>
-<meta name="description" content="Herald is a small self-hosted gateway that lets coding agents across all your projects email you when work finishes. Self-host now; Cloud is coming.">
-<meta name="color-scheme" content="light dark">
+<meta name="description" content="Herald is a small self-hosted gateway that lets coding agents across all your projects email you when work finishes.">
+<meta name="color-scheme" content="dark">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,8 +20,8 @@
     <span>herald</span>
   </a>
   <nav aria-label="Primary">
+    <a href="#lifecycle">Lifecycle</a>
     <a href="#self-host">Self-host</a>
-    <a href="#waitlist">Cloud</a>
     <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
     <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
     <a href="https://github.com/marcustut/herald">GitHub</a>
@@ -41,7 +41,7 @@
     </p>
     <p class="cta">
       <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Self-host now</a>
-      <a class="btn" href="#waitlist">Join the Cloud waitlist</a>
+      <a class="btn" href="#lifecycle">See the lifecycle</a>
     </p>
     <p class="footnote">Recipients are resolved server-side from the token — agents set no headers and cannot redirect mail.</p>
   </section>
@@ -70,22 +70,55 @@
     </div>
   </section>
 
-  <section class="split" aria-labelledby="host-h">
-    <div class="pane" id="self-host">
-      <h2 id="host-h">Self-host now</h2>
-      <p>No account and no build step. Clone, start Compose, create a token, and
-      send your first event in under ten minutes.</p>
-      <p class="cta">
-        <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Quickstart</a>
-        <a class="btn" href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker operations</a>
-      </p>
+  <section class="lifecycle" id="lifecycle" aria-labelledby="lifecycle-h">
+    <h2 id="lifecycle-h">The lifecycle</h2>
+    <p class="lede">You hand work to your agents. They disappear into a
+    long-running task. When it finishes, Herald emails you the summary — once,
+    in your inbox.</p>
+
+    <div class="flow" role="img"
+         aria-label="Lifecycle: you dispatch work to agents; the agents run a long-running task; Herald emails you a summary report when it finishes.">
+      <ol class="steps">
+        <li class="step s1">
+          <span class="k">01 · You work with agents</span>
+          <div class="viz dispatch">
+            <span class="chip you">you</span>
+            <span class="wire" aria-hidden="true"></span>
+            <span class="chip agent">agent</span>
+            <span class="chip agent">agent</span>
+            <span class="chip agent">agent</span>
+          </div>
+        </li>
+        <li class="step s2">
+          <span class="k">02 · Long-running task</span>
+          <div class="viz work">
+            <span class="track" aria-hidden="true"><i></i></span>
+            <span class="elapsed">working…</span>
+          </div>
+        </li>
+        <li class="step s3">
+          <span class="k">03 · Summary report</span>
+          <div class="viz report">
+            <div class="mail">
+              <span class="mail-from">Herald &lt;herald@example.com&gt;</span>
+              <span class="mail-subj">[herald] success · axis · herald-cli — deploy finished</span>
+              <span class="mail-body">3 files changed · all tests passed</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+      <div class="rail" aria-hidden="true"><i></i></div>
     </div>
-    <div class="pane" id="cloud">
-      <h2>Cloud — coming</h2>
-      <p>Herald Cloud will run the gateway and dispatcher for you, so you only
-      manage tokens. No pricing yet; it is not live.</p>
-      <p class="cta"><a class="btn" href="#waitlist">Tell me when it's ready</a></p>
-    </div>
+  </section>
+
+  <section class="pane selfhost" id="self-host" aria-labelledby="host-h">
+    <h2 id="host-h">Self-host now</h2>
+    <p>No account and no build step. Clone, start Compose, create a token, and
+    send your first event in under ten minutes.</p>
+    <p class="cta">
+      <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Quickstart</a>
+      <a class="btn" href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker operations</a>
+    </p>
   </section>
 
   <section class="demo" id="demo" aria-labelledby="demo-h">
@@ -113,43 +146,12 @@ PR · https://github.com/example/repo/pull/42</code></pre>
     <code>POST /v1/events</code>.</p>
   </section>
 
-  <section class="waitlist" id="waitlist" aria-labelledby="waitlist-h">
-    <h2 id="waitlist-h">Cloud waitlist</h2>
-    <p>Leave an address if you want a note when Cloud opens. Self-host users do
-    not need this.</p>
-    <!--
-      This form is intentionally inert: action is empty and no data leaves the
-      page. To collect addresses, point action at your own endpoint or a
-      privacy-preserving provider and set method="post".
-    -->
-    <form action="" novalidate>
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" autocomplete="email"
-             placeholder="you@example.com" required>
-      <label class="consent">
-        <input name="consent" type="checkbox" value="yes" required>
-        <span>I agree to be contacted once about Herald Cloud, and nothing else.</span>
-      </label>
-      <button class="btn btn-primary" type="submit">Join the waitlist</button>
-      <p class="footnote">
-        This form does not send your address anywhere yet — the operator must
-        wire it up. See the <a href="#privacy">privacy note</a>.
-      </p>
-    </form>
-  </section>
-
-  <section class="privacy" id="privacy" aria-labelledby="privacy-h">
-    <h2 id="privacy-h">Privacy</h2>
+  <section class="privacy" id="contact" aria-labelledby="contact-h">
+    <h2 id="contact-h">Questions &amp; privacy</h2>
     <ul>
-      <li>No third-party trackers, cookies, or external fonts. This page is a
-      static file — the type is served from this same directory, so nothing
-      loads from anyone else's server.</li>
-      <li>The waitlist form is a placeholder and stays inert until wired to a
-      first-party endpoint. Consent is required and collected only for that one
-      email.</li>
-      <li>To measure visits without tracking people, the operator can parse
-      server logs or self-host privacy-preserving analytics.</li>
-      <li>Questions: <a href="mailto:hello@example.com">hello@example.com</a>.</li>
+      <li>No third-party trackers, cookies, or external requests. This page is a
+      static file, and even the type is served from this same directory.</li>
+      <li>Questions, bugs, or requests: <a href="mailto:marcus@marcustut.me">marcus@marcustut.me</a>.</li>
     </ul>
   </section>
 
