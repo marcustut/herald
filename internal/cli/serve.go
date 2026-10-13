@@ -181,6 +181,7 @@ func cloudAPI(cfg config.Gateway, st stores, logger *slog.Logger) *httpapi.Cloud
 			Clock:    systemClock{},
 			LinkBase: cfg.Cloud.BaseURL,
 		},
+		Events:       st.eventLog,
 		Limiter:      memory.NewLoginLimiter(httpapi.DefaultAuthRequests, httpapi.DefaultAuthWindow, systemClock{}),
 		CookieSecure: strings.HasPrefix(cfg.Cloud.BaseURL, "https://"),
 		Logger:       logger,

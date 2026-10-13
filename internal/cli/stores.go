@@ -16,6 +16,10 @@ type stores struct {
 	credentials app.CredentialStore
 	events      app.EventStore
 	deliveries  app.DeliveryStore
+	// eventLog is the tenant-scoped, read-only dashboard query surface. It is
+	// the same PostgreSQL Events store as events/deliveries, typed for the
+	// narrower read port; nil in dev/memory mode.
+	eventLog app.EventLog
 	// Hosted-auth stores are nil in dev/memory mode; the cloud surface requires
 	// a real database, so serve refuses to enable it without one.
 	identities  app.IdentityStore
@@ -67,6 +71,7 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		credentials:       postgres.NewCredentials(pool),
 		events:            events,
 		deliveries:        events,
+		eventLog:          events,
 		projects:          ownership,
 		identities:        postgres.NewIdentities(pool),
 		sessions:          postgres.NewSessions(pool),

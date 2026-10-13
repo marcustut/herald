@@ -440,6 +440,89 @@ func (s *Events) ListDeliveries(ctx context.Context, f app.DeliveryFilter, limit
 	return out, rows.Err()
 }
 
+// listEventLogQuery is the tenant-scoped event listing behind the dashboard.
+// The tenant comes first from the session, so the project/status/date filters
+// can only narrow within it. A nil bound means "unbounded" on that side.
+const listEventLogQuery = selectEvent + `
+WHERE tenant_id = $1
+  AND ($2 = '' OR project_id = $2)
+  AND ($3 = '' OR status = $3)
+  AND ($4::timestamptz IS NULL OR created_at >= $4)
+  AND ($5::timestamptz IS NULL OR created_at < $5)
+ORDER BY created_at DESC, id
+LIMIT NULLIF($6, 0) OFFSET $7`
+
+// ListEvents returns tenant's events, newest first, matching f.
+func (s *Events) ListEvents(ctx context.Context, tenant domain.TenantID, f app.EventFilter, limit, offset int) ([]domain.Event, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := s.pool.Query(ctx, listEventLogQuery,
+		string(tenant), string(f.Project), string(f.Status), nullTime(f.Since), nullTime(f.Until), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.Event
+	for rows.Next() {
+		rep, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rep)
+	}
+	return out, rows.Err()
+}
+
+// listDeliveryLogQuery is the tenant-scoped delivery listing behind the
+// dashboard. It joins the owning event so the tenant scope is applied to the
+// event row; the delivery table carries no tenant of its own. Column order
+// matches scanDelivery.
+const listDeliveryLogQuery = `
+SELECT d.id, d.event_id, d.sink_id, d.state, d.attempts, d.next_attempt_at,
+       d.lease_until, d.last_error, d.created_at, d.updated_at
+FROM deliveries d
+JOIN events e ON e.id = d.event_id
+WHERE e.tenant_id = $1
+  AND ($2 = '' OR e.project_id = $2)
+  AND ($3 = '' OR d.state = $3)
+  AND ($4 = '' OR d.event_id = $4)
+  AND ($5::timestamptz IS NULL OR d.created_at >= $5)
+  AND ($6::timestamptz IS NULL OR d.created_at < $6)
+ORDER BY d.created_at DESC, d.id
+LIMIT NULLIF($7, 0) OFFSET $8`
+
+// ListDeliveryAttempts returns tenant's delivery attempts, newest first,
+// matching f.
+func (s *Events) ListDeliveryAttempts(ctx context.Context, tenant domain.TenantID, f app.DeliveryLogFilter, limit, offset int) ([]domain.Delivery, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := s.pool.Query(ctx, listDeliveryLogQuery,
+		string(tenant), string(f.Project), string(f.State), string(f.EventID), nullTime(f.Since), nullTime(f.Until), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list delivery log: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.Delivery
+	for rows.Next() {
+		d, err := scanDelivery(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // The outer filter is ANDed with the safety clause, so a delivered row can never
 // be selected and an inflight row is only picked up once its lease has expired.
 const requeueQuery = `
@@ -518,4 +601,5 @@ func timeOrZero(t *time.Time) time.Time {
 var (
 	_ app.EventStore    = (*Events)(nil)
 	_ app.DeliveryStore = (*Events)(nil)
+	_ app.EventLog      = (*Events)(nil)
 )
