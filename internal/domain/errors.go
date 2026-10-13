@@ -12,6 +12,7 @@ var (
 	ErrInvalidAgent          = errors.New("invalid agent")
 	ErrInvalidContext        = errors.New("invalid context")
 	ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
+	ErrInvalidOccurrenceID   = errors.New("invalid occurrence id")
 	ErrInvalidToken          = errors.New("invalid token")
 	ErrInvalidTransition     = errors.New("invalid delivery transition")
 	ErrTitleRequired         = errors.New("title is required")

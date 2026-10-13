@@ -129,6 +129,29 @@ func TestSubmitIdempotentReplay(t *testing.T) {
 	}
 }
 
+// Two identical completions with no occurrence id are two distinct events.
+func TestSubmitIdenticalCompletionsAreDistinct(t *testing.T) {
+	h := newHarness(t)
+	token := h.token(t)
+	const body = `{"project":"axis","status":"success","title":"deploy","body":"all green","agent":"herdr-build"}`
+	id1 := decodeID(t, h.post(t, token, "application/json", body))
+	id2 := decodeID(t, h.post(t, token, "application/json", body))
+	if id1 == id2 {
+		t.Fatalf("identical completions collapsed: %q", id1)
+	}
+}
+
+func TestSubmitOccurrenceRetry(t *testing.T) {
+	h := newHarness(t)
+	token := h.token(t)
+	const body = `{"project":"axis","status":"success","title":"deploy","agent":"herdr-build","occurrenceId":"run-42"}`
+	id1 := decodeID(t, h.post(t, token, "application/json", body))
+	id2 := decodeID(t, h.post(t, token, "application/json", body))
+	if id1 != id2 {
+		t.Fatalf("occurrence retry created a new event: %q vs %q", id1, id2)
+	}
+}
+
 func TestSubmitAuthErrors(t *testing.T) {
 	h := newHarness(t)
 	if got := h.post(t, "", "application/json", validBody).StatusCode; got != http.StatusUnauthorized {

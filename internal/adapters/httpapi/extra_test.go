@@ -23,7 +23,7 @@ func (f failingEvents) Save(context.Context, domain.Event, []domain.Delivery) er
 func (f failingEvents) ByID(context.Context, domain.EventID) (domain.Event, bool, error) {
 	return domain.Event{}, false, f.err
 }
-func (f failingEvents) ByIdempotencyKey(context.Context, domain.TenantID, domain.IdempotencyKey) (domain.Event, bool, error) {
+func (f failingEvents) ByIdempotencyKey(context.Context, domain.TenantID, domain.ProjectID, domain.IdempotencyKey) (domain.Event, bool, error) {
 	return domain.Event{}, false, f.err
 }
 
@@ -79,7 +79,8 @@ func TestSubmitValidationFields(t *testing.T) {
 		{"agent", `{"project":"axis","status":"success","title":"t","agent":"","idempotencyKey":"k"}`, "agent"},
 		{"links", `{"project":"axis","status":"success","title":"t","agent":"a","idempotencyKey":"k","links":[{"label":"","url":"https://x"}]}`, "links"},
 		{"context", `{"project":"axis","status":"success","title":"t","agent":"a","idempotencyKey":"k","context":{"agent":"x"}}`, "context"},
-		{"idempotencyKey", `{"project":"axis","status":"success","title":"t","agent":"a"}`, "idempotencyKey"},
+		{"occurrenceId", `{"project":"axis","status":"success","title":"t","agent":"a","occurrenceId":"a/b"}`, "occurrenceId"},
+		{"idempotencyKey", `{"project":"axis","status":"success","title":"t","agent":"a","idempotencyKey":"a b"}`, "idempotencyKey"},
 		{"body", `{"project":"axis","status":"success","title":"t","agent":"a","idempotencyKey":"k","body":"` + strings.Repeat("a", domain.MaxBodyLen+1) + `"}`, "body"},
 	}
 	for _, tt := range tests {

@@ -51,8 +51,9 @@ func (s *Credentials) ProjectCredential(_ context.Context, tenant domain.TenantI
 var _ app.CredentialStore = (*Credentials)(nil)
 
 type eventKey struct {
-	tenant domain.TenantID
-	key    domain.IdempotencyKey
+	tenant  domain.TenantID
+	project domain.ProjectID
+	key     domain.IdempotencyKey
 }
 
 // Events is an in-memory app.EventStore and app.DeliveryStore.
@@ -73,7 +74,7 @@ func NewEvents() *Events {
 func (s *Events) Save(_ context.Context, rep domain.Event, ds []domain.Delivery) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	k := eventKey{rep.TenantID, rep.IdempotencyKey}
+	k := eventKey{rep.TenantID, rep.ProjectID, rep.IdempotencyKey}
 	if _, ok := s.byKey[k]; ok {
 		return app.ErrIdempotencyConflict
 	}
@@ -90,10 +91,10 @@ func (s *Events) ByID(_ context.Context, id domain.EventID) (domain.Event, bool,
 	return rep, ok, nil
 }
 
-func (s *Events) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error) {
+func (s *Events) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, project domain.ProjectID, key domain.IdempotencyKey) (domain.Event, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	id, ok := s.byKey[eventKey{tenant, key}]
+	id, ok := s.byKey[eventKey{tenant, project, key}]
 	if !ok {
 		return domain.Event{}, false, nil
 	}

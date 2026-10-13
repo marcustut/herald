@@ -27,7 +27,7 @@ func TestServe(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"done","idempotencyKey":"k"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"done","occurrenceId":"occ-1","idempotencyKey":"k"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"bogus"}`,
 	}, "\n") + "\n")
 
@@ -52,6 +52,9 @@ func TestServe(t *testing.T) {
 		t.Fatalf("tools/call response = %q", lines[2])
 	}
 	if fake.got.Project != "axis" || fake.got.Agent != "herdr" || fake.got.Host != "h1" {
+		t.Fatalf("submitter got %+v", fake.got)
+	}
+	if fake.got.OccurrenceID != "occ-1" || fake.got.IdempotencyKey != "k" {
 		t.Fatalf("submitter got %+v", fake.got)
 	}
 }

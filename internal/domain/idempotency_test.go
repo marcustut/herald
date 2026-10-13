@@ -34,3 +34,42 @@ func TestParseIdempotencyKey(t *testing.T) {
 		})
 	}
 }
+
+func TestParseOccurrenceID(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		wantErr error
+	}{
+		{"plain", "deploy-42", nil},
+		{"trimmed", "  run:1  ", nil},
+		{"empty", "", ErrInvalidOccurrenceID},
+		{"whitespace only", "   ", ErrInvalidOccurrenceID},
+		{"too long", strings.Repeat("a", MaxOccurrenceIDLen+1), ErrInvalidOccurrenceID},
+		{"slash", "a/b", ErrInvalidOccurrenceID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseOccurrenceID(tt.in)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && got != OccurrenceID(strings.TrimSpace(tt.in)) {
+				t.Fatalf("got %q", got)
+			}
+		})
+	}
+}
+
+func TestOccurrenceKeyIsNamespaced(t *testing.T) {
+	if got := OccurrenceKey("shared"); got != "occ_shared" {
+		t.Fatalf("key = %q", got)
+	}
+	// An occurrence cannot collide with a raw idempotency key of the same name.
+	if OccurrenceKey("shared") == IdempotencyKey("shared") {
+		t.Fatal("occurrence key must be namespaced")
+	}
+	if len(OccurrenceKey(OccurrenceID(strings.Repeat("a", MaxOccurrenceIDLen)))) > MaxIdempotencyKeyLen {
+		t.Fatal("occurrence key exceeds max length")
+	}
+}

@@ -163,13 +163,30 @@ func TestSkillCommand(t *testing.T) {
 	}
 }
 
-func TestDeriveKeyIsStable(t *testing.T) {
-	a := deriveKey("success", "t", "b", nil)
-	b := deriveKey("success", "t", "b", nil)
-	if a != b {
-		t.Fatal("key should be deterministic")
+func TestSendOccurrenceID(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"evt_occ"}`))
+	}))
+	defer srv.Close()
+	t.Setenv("HERALD_GATEWAY", srv.URL)
+	t.Setenv("HERALD_TOKEN", "tok")
+	t.Setenv("HERALD_PROJECT", "axis")
+
+	code, out, errOut := run(t, "", "send", "--status", "success", "--title", "t", "--occurrence-id", "deploy-42")
+	if code != 0 {
+		t.Fatalf("code=%d err=%s", code, errOut)
 	}
-	if a == deriveKey("failure", "t", "b", nil) {
-		t.Fatal("different content should differ")
+	if strings.TrimSpace(out) != "evt_occ" {
+		t.Fatalf("out = %q", out)
+	}
+	if got["occurrenceId"] != "deploy-42" {
+		t.Fatalf("occurrenceId = %v", got["occurrenceId"])
+	}
+	// No content-derived key by default.
+	if k, ok := got["idempotencyKey"]; ok && k != "" {
+		t.Fatalf("unexpected default idempotencyKey = %v", k)
 	}
 }

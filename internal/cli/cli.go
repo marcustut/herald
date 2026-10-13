@@ -3,8 +3,6 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,7 +21,8 @@ Usage:
   herald serve [--config FILE] [--database-url URL] [--dev] [--dispatch] [--issue-token PROJECT]
   herald dispatch [--config FILE] --database-url URL [--workers N]
   herald send  [--config FILE] --status STATUS --title TITLE [--body TEXT]
-               [--link LABEL=URL]... [--agent NAME] [--host NAME] [--idempotency-key KEY] [--json]
+               [--link LABEL=URL]... [--agent NAME] [--host NAME]
+               [--occurrence-id ID] [--idempotency-key KEY] [--json]
   herald token create --database-url URL --project PROJECT [--tenant ID] [--scoped P1,P2]
   herald token revoke --database-url URL --project PROJECT [--tenant ID]
   herald mcp   [--config FILE] [--agent NAME] [--host NAME]
@@ -96,15 +95,4 @@ func gatewayClient(configPath string) (client.Client, string, string, string, er
 	}
 	token := os.Getenv("HERALD_TOKEN")
 	return client.Client{Gateway: gateway, Token: token}, project, os.Getenv("HERALD_AGENT"), os.Getenv("HERALD_HOST"), nil
-}
-
-// deriveKey produces a stable idempotency key from the event content so a
-// retry of the same event does not create a duplicate.
-func deriveKey(status, title, body string, links []client.Link) string {
-	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s", status, title, body)
-	for _, l := range links {
-		fmt.Fprintf(h, "\x00%s\x00%s", l.Label, l.URL)
-	}
-	return "herald-" + hex.EncodeToString(h.Sum(nil))[:32]
 }

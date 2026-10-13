@@ -43,22 +43,31 @@ func TestEvents(t *testing.T) {
 	ctx := context.Background()
 	store := NewEvents()
 
-	rep := domain.Event{ID: "evt_1", TenantID: "ten_1", IdempotencyKey: "run-1"}
+	rep := domain.Event{ID: "evt_1", TenantID: "ten_1", ProjectID: "axis", IdempotencyKey: "run-1"}
 	delivery := domain.Delivery{ID: "del_1", EventID: "evt_1", SinkID: "email"}
 	if err := store.Save(ctx, rep, []domain.Delivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, ok, err := store.ByIdempotencyKey(ctx, "ten_1", "run-1")
+	got, ok, err := store.ByIdempotencyKey(ctx, "ten_1", "axis", "run-1")
 	if err != nil || !ok || got.ID != "evt_1" {
 		t.Fatalf("got %+v, ok %v, err %v", got, ok, err)
 	}
-	if _, ok, _ := store.ByIdempotencyKey(ctx, "ten_1", "other"); ok {
+	if _, ok, _ := store.ByIdempotencyKey(ctx, "ten_1", "axis", "other"); ok {
 		t.Fatal("unknown key should not resolve")
 	}
 
 	if err := store.Save(ctx, rep, nil); !errors.Is(err, app.ErrIdempotencyConflict) {
 		t.Fatalf("err = %v", err)
+	}
+
+	// The same key in another project is a different event.
+	other := domain.Event{ID: "evt_2", TenantID: "ten_1", ProjectID: "herald", IdempotencyKey: "run-1"}
+	if err := store.Save(ctx, other, nil); err != nil {
+		t.Fatalf("cross-project key should not conflict: %v", err)
+	}
+	if _, ok, _ := store.ByIdempotencyKey(ctx, "ten_1", "axis", "run-1"); !ok {
+		t.Fatal("project-scoped lookup should still find the original")
 	}
 
 	if _, ok := store.Event("evt_1"); !ok {

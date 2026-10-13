@@ -76,12 +76,13 @@ type SinkDirectory interface {
 }
 
 // EventStore persists a event and its delivery rows atomically, and answers
-// idempotency lookups. Save returns ErrIdempotencyConflict when a event for the
-// same (tenant, idempotency key) already exists.
+// idempotency lookups. Save returns ErrIdempotencyConflict when an event for the
+// same (tenant, project, idempotency key) already exists; the project scope lets
+// two projects reuse the same key without colliding.
 type EventStore interface {
 	Save(ctx context.Context, event domain.Event, deliveries []domain.Delivery) error
 	ByID(ctx context.Context, id domain.EventID) (domain.Event, bool, error)
-	ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error)
+	ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, key domain.IdempotencyKey) (domain.Event, bool, error)
 }
 
 // DeliveryStore is the queue backend the dispatcher drains.

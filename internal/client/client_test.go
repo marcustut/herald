@@ -23,7 +23,7 @@ func TestSubmit(t *testing.T) {
 
 	c := &Client{Gateway: srv.URL, Token: "herald_axis_secret"}
 	id, err := c.Submit(context.Background(), Event{
-		Project: "axis", Status: "success", Title: "t", Agent: "a", Host: "h", IdempotencyKey: "k",
+		Project: "axis", Status: "success", Title: "t", Agent: "a", Host: "h", OccurrenceID: "occ-1", IdempotencyKey: "k",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -35,6 +35,9 @@ func TestSubmit(t *testing.T) {
 		t.Fatalf("auth=%q ct=%q", auth, contentType)
 	}
 	if ctx, _ := body["context"].(map[string]any); ctx["host"] != "h" {
+		t.Fatalf("body = %v", body)
+	}
+	if body["occurrenceId"] != "occ-1" || body["idempotencyKey"] != "k" {
 		t.Fatalf("body = %v", body)
 	}
 }

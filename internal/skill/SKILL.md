@@ -44,8 +44,10 @@ JSON
 - `--title` is required and should be short and specific.
 - Never paste secrets. The gateway redacts secret-looking strings, but do not
   rely on it.
-- Retries are safe: the CLI derives a stable idempotency key from the content,
-  so sending the same event twice does not duplicate it.
+- Each `herald send` is a new event. To retry the *same* logical event safely
+  (e.g. the send may have timed out), add `--occurrence-id <stable-id>`: repeating
+  it returns the original event instead of creating a duplicate. Different events
+  must use different ids (or none).
 - Best-effort: if `herald send` fails, mention it briefly and carry on. Never
   let notifying block or fail the actual work.
 

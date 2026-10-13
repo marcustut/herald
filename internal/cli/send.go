@@ -31,6 +31,7 @@ type sendPayload struct {
 	Agent          string            `json:"agent"`
 	Links          []client.Link     `json:"links"`
 	Context        map[string]string `json:"context"`
+	OccurrenceID   string            `json:"occurrenceId"`
 	IdempotencyKey string            `json:"idempotencyKey"`
 }
 
@@ -42,7 +43,8 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	body := fs.String("body", "", "details")
 	agent := fs.String("agent", "", "agent name (defaults to HERALD_AGENT)")
 	host := fs.String("host", "", "machine (defaults to HERALD_HOST)")
-	key := fs.String("idempotency-key", "", "stable key (defaults to a hash of the event)")
+	occurrenceID := fs.String("occurrence-id", "", "stable id so a retry reuses the same event")
+	key := fs.String("idempotency-key", "", "explicit retry key (alternative to --occurrence-id)")
 	asJSON := fs.Bool("json", false, "read a JSON event from stdin")
 	var links linkFlags
 	fs.Var(&links, "link", "LABEL=URL (repeatable)")
@@ -57,13 +59,15 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	}
 
 	event := client.Event{
-		Project: project,
-		Status:  *status,
-		Title:   *title,
-		Body:    *body,
-		Agent:   firstNonEmpty(*agent, defaultAgent),
-		Host:    firstNonEmpty(*host, defaultHost),
-		Links:   links,
+		Project:        project,
+		Status:         *status,
+		Title:          *title,
+		Body:           *body,
+		Agent:          firstNonEmpty(*agent, defaultAgent),
+		Host:           firstNonEmpty(*host, defaultHost),
+		Links:          links,
+		OccurrenceID:   *occurrenceID,
+		IdempotencyKey: *key,
 	}
 	if *asJSON {
 		var payload sendPayload
@@ -80,15 +84,11 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if h, ok := payload.Context["host"]; ok {
 			event.Host = h
 		}
-		event.IdempotencyKey = payload.IdempotencyKey
+		event.OccurrenceID = firstNonEmpty(*occurrenceID, payload.OccurrenceID)
+		event.IdempotencyKey = firstNonEmpty(*key, payload.IdempotencyKey)
 	}
 	if event.Agent == "" {
 		event.Agent = "herald"
-	}
-	if event.IdempotencyKey == "" {
-		event.IdempotencyKey = firstNonEmpty(*key, deriveKey(event.Status, event.Title, event.Body, event.Links))
-	} else {
-		event.IdempotencyKey = firstNonEmpty(*key, event.IdempotencyKey)
 	}
 
 	id, err := cl.Submit(ctx, event)
