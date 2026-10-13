@@ -89,7 +89,7 @@ credentials from its own config directory instead:
 ```sh
 CFG=$(herdr plugin config-dir herald.notify)
 cat > "$CFG/herald.env" <<'EOF'
-HERALD_GATEWAY=https://herald.marcustut.me
+HERALD_GATEWAY=https://herald.example.com
 HERALD_PROJECT=herdr
 HERALD_TOKEN=heraldacct_<scoped-token>
 EOF

@@ -6,9 +6,8 @@ local PostgreSQL role/database, and an optional nginx + ACME front door. The
 module is host-neutral: everything site-specific (domain, secrets, SMTP
 credentials, database URL) is configuration, not code.
 
-This is the same path used by the live deployment at
-`https://herald.marcustut.me/api`; the observed runtime state and end-to-end
-checks are recorded in [deployment-verification.md](deployment-verification.md).
+The path is host-neutral: substitute your own domain, secrets and
+credentials.
 
 ```
 nginx :443 ──/api/──► herald serve 127.0.0.1:8787 ──► PostgreSQL (queue + audit)
