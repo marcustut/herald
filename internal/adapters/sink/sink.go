@@ -73,6 +73,7 @@ func build(id string, sc config.Sink, smtpCfg config.SMTP, user, pass string) (a
 		return NewEmail(domain.SinkID(id), EmailConfig{
 			Addr:          smtpCfg.Addr,
 			From:          smtpCfg.From,
+			FromName:      smtpCfg.FromName,
 			Recipient:     sc.Recipient,
 			Username:      user,
 			Password:      pass,

@@ -13,6 +13,9 @@ tenant = "owner"
 [smtp]
 addr = "127.0.0.1:587"
 from = "herald@marcustut.me"
+# Display name shown by mail clients. Defaults to "Herald" when omitted; set it
+# to "" to send the bare address instead.
+from_name = "Herald"
 # When dialling the submission listener by IP, verify STARTTLS against the
 # certificate's name (the box's cert is for mail.marcustut.me).
 server_name = "mail.marcustut.me"
