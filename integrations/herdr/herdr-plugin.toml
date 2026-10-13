@@ -1,0 +1,14 @@
+id = "herald.notify"
+name = "Herald Notify"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Email a Herald notification when an agent pane becomes blocked or done"
+platforms = ["linux", "macos"]
+
+# Fires on every agent state change; the hook filters to blocked/done transitions.
+# Event name uses dots in the manifest even though the wire payload's event is
+# "pane_agent_status_changed" (verified against herdr 0.9.3; see docs/herdr-plugin.md).
+[[events]]
+on = "pane.agent_status_changed"
+platforms = ["linux", "macos"]
+command = ["sh", "herald-event.sh"]
