@@ -327,6 +327,40 @@ type EventStore interface {
 	ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, key domain.IdempotencyKey) (domain.Event, bool, error)
 }
 
+// EventFilter narrows a tenant-scoped event listing for the dashboard. Every
+// zero field matches any value; Since is inclusive and Until is exclusive. The
+// tenant is supplied separately (from the session), never by the filter, so a
+// caller cannot widen scope by naming a project it does not own.
+type EventFilter struct {
+	Project domain.ProjectID
+	Status  domain.Status
+	Since   time.Time
+	Until   time.Time
+}
+
+// DeliveryLogFilter narrows a tenant-scoped delivery listing for the dashboard.
+// Every zero field matches any value; Since is inclusive and Until is exclusive.
+// It is deliberately separate from DeliveryFilter (the operator requeue filter):
+// this one is always joined to the owning event's tenant, so it can never select
+// a row another tenant owns.
+type DeliveryLogFilter struct {
+	Project domain.ProjectID
+	State   domain.DeliveryState
+	EventID domain.EventID
+	Since   time.Time
+	Until   time.Time
+}
+
+// EventLog is the read-only query side of the event and delivery tables behind
+// the cloud dashboard: a tenant lists its recent events and delivery attempts
+// with filters and pagination. Ownership always comes from the tenant the
+// caller passes (taken from the authenticated session), never from the request.
+// Results are newest first; a limit <= 0 means no limit.
+type EventLog interface {
+	ListEvents(ctx context.Context, tenant domain.TenantID, f EventFilter, limit, offset int) ([]domain.Event, error)
+	ListDeliveryAttempts(ctx context.Context, tenant domain.TenantID, f DeliveryLogFilter, limit, offset int) ([]domain.Delivery, error)
+}
+
 // DeliveryFilter narrows a delivery listing or a bulk requeue. Every zero field
 // matches any value, so the zero filter matches every row.
 type DeliveryFilter struct {

@@ -48,6 +48,9 @@ type Cloud struct {
 	// BounceSecret is the shared secret the provider webhook must present. It is
 	// read from HERALD_BOUNCE_WEBHOOK_SECRET, never from the config file.
 	BounceSecret string
+	// Events is the read-only, tenant-scoped event/delivery log behind the
+	// dashboard. Nil leaves the dashboard query routes unregistered.
+	Events app.EventLog
 }
 
 func (c *Cloud) register(mux *http.ServeMux) {
@@ -59,6 +62,7 @@ func (c *Cloud) register(mux *http.ServeMux) {
 	c.registerProjects(mux)
 	c.registerDestinations(mux)
 	c.registerEmailEvents(mux)
+	c.registerDashboard(mux)
 }
 
 type magicLinkPayload struct {

@@ -370,7 +370,7 @@ func TestCloudProjectsPageRequiresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "Herald projects") {
+	if !strings.Contains(string(body), "Herald dashboard") {
 		t.Fatal("page body is missing its heading")
 	}
 }
