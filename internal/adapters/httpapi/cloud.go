@@ -41,6 +41,9 @@ type Cloud struct {
 	// Destinations is the hosted destination surface. Nil (a deployment that
 	// has not wired it) leaves the destination routes unregistered.
 	Destinations *app.Destinations
+	// Events is the read-only, tenant-scoped event/delivery log behind the
+	// dashboard. Nil leaves the dashboard query routes unregistered.
+	Events app.EventLog
 }
 
 func (c *Cloud) register(mux *http.ServeMux) {
@@ -51,6 +54,7 @@ func (c *Cloud) register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /cloud/v1/account", c.handleDeleteAccount)
 	c.registerProjects(mux)
 	c.registerDestinations(mux)
+	c.registerDashboard(mux)
 }
 
 type magicLinkPayload struct {
