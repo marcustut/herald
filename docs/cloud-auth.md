@@ -179,8 +179,9 @@ next request.
 
 The HTML page at `/cloud/projects` is a thin stdlib template over these JSON
 routes. It authenticates with the session cookie and sends the CSRF token
-(`X-CSRF-Token`) on every mutation; if the token is not already in the browser
-(after `#34` lands, sign-in will hand it over) the page offers a paste field.
+(`X-CSRF-Token`) on every mutation; it accepts the token from the sign-in hash
+(`#csrf=…`) or from a paste field (`herald login` redeems the callback directly
+and never needs the page).
 Every successful mutation is audited through the structured logger with the
 actor, tenant, project and action — never a raw secret.
 
@@ -195,6 +196,46 @@ with `HERALD_BOUNCE_WEBHOOK_SECRET` set. See
 [deliverability.md](deliverability.md) for the DNS records and the owner's
 wiring steps.
 
+## CLI login (`herald login`)
+
+A hosted account can onboard a machine from the CLI without an operator and
+without a browser. The flow reuses the #29 magic link and the #30 project token —
+it adds no new credential type and no new server route:
+
+```sh
+herald login --gateway https://cloud.example.com --project axis --email you@example.com
+```
+
+1. The CLI `POST`s `{"email":"you@example.com"}` to
+   `/cloud/v1/auth/magic-link` and prints an instruction to paste the emailed
+   link (or its token). It does not open the link, because the link is
+   single-use and the CLI is the one that redeems it.
+2. The CLI `GET`s `/cloud/v1/auth/callback?token=…`, holding the session cookie
+   in memory, and reads the CSRF token from the response.
+3. It lists `/cloud/v1/projects`; if `--project axis` is missing it creates it
+   (`POST /cloud/v1/projects`), so a brand-new account is provisioned with a
+   project in the same step.
+4. It mints a **single-project token** with
+   `POST /cloud/v1/projects/axis/token` (least privilege), drops the session, and
+   writes the token to the `0600` credential file. The secret is never printed
+   and never stored by the client except in that file.
+
+The first cloud email still needs a verified destination: add an email
+destination for the project and redeem its verification link. The token pins the
+recipient server-side, so the destination is the only thing between a fresh
+account and its first email.
+
+On a self-hosted gateway (no `[cloud]`), pass a token the operator issued or
+copy one from a secret store:
+
+```sh
+herald login --gateway http://localhost:8787 --project axis --token "$HERALD_TOKEN"
+```
+
+Run `herald login … --test` to submit one event and confirm delivery. See
+[docs/cli.md](cli.md#herald-login) for the flags, the credential-file precedence
+and the noninteractive CI path.
+
 ## Self-host compatibility
 
 A deployment that never sets `[cloud]` is unchanged: no accounts surface, no
@@ -203,8 +244,8 @@ additive, so an existing Event database upgrades with no data loss.
 
 ## Deferred
 
-Not part of this milestone and deliberately not built here: the dashboard (#33),
-`herald login` (#34) and the remaining quota work (#35). The project/token
-self-service surface above is #30. Token `last_used_at` is part of the metadata
+Not part of this milestone and deliberately not built here: the remaining quota
+work (#35). The project/token self-service surface above is #30, the dashboard is
+#33 and `herald login` is #34. Token `last_used_at` is part of the metadata
 contract but is not yet written on authentication, so it currently always reads
 empty.

@@ -103,6 +103,20 @@ func TestInitializeDefaultsProtocol(t *testing.T) {
 	}
 }
 
+// TestInitializeNamesConfiguredGateway keeps the initialize result pointing at
+// the cloud or self-hosted gateway the server actually uses.
+func TestInitializeNamesConfiguredGateway(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}` + "\n")
+	var out bytes.Buffer
+	s := &Server{Project: "axis", Gateway: "https://cloud.example.com", Client: &fakeSubmitter{}, In: in, Out: &out}
+	if err := s.Serve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "https://cloud.example.com") {
+		t.Fatalf("initialize did not name the gateway: %q", out.String())
+	}
+}
+
 func TestServeIgnoresInvalidJSON(t *testing.T) {
 	in := strings.NewReader("not json\n" + `{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n")
 	var out bytes.Buffer

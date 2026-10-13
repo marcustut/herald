@@ -53,6 +53,17 @@ If someone else operates the gateway, ask them for the token; they run the same
 command. The token is what the gateway uses to pin the recipient — agents cannot
 redirect notifications.
 
+**Hosted Herald Cloud instead?** Skip the manual token and sign in from the CLI.
+It mints a project token for you and stores it in a `0600` credential file, so
+you do not have to export anything:
+
+```sh
+herald login --gateway https://cloud.example.com --project axis --email you@example.com
+```
+
+`herald send` then finds the token automatically. See
+[cloud-auth.md](cloud-auth.md#cli-login).
+
 ## 3. Initialize the project (≈1 min)
 
 In the repository you want notifications from:
@@ -72,8 +83,8 @@ herald init --force                                               # replace exis
 ```
 
 `herald.toml` holds only `project` and `gateway`; the token comes from
-`HERALD_TOKEN` and is never written to disk. Use `--no-guidance` for quiet
-scripting.
+`HERALD_TOKEN` or the `0600` credential file written by `herald login`, and is
+never written to `herald.toml`. Use `--no-guidance` for quiet scripting.
 
 ## 4. Send a test event (≈1 min)
 
@@ -112,7 +123,7 @@ done" and it will call Herald.
 
 | Symptom | Fix |
 |---|---|
-| `HERALD_TOKEN is missing` | Export the token from step 2 in this shell. |
+| `HERALD_TOKEN is missing` | Export the token from step 2, or store it with `herald login`. |
 | `gateway URL is missing` | Run `herald init --gateway <url>` or set `HERALD_GATEWAY`. |
 | `herald.toml already exists` | Review it, then re-run with `--force`. |
 | `401 unauthenticated` | The token's project does not match `project` in `herald.toml`, or it was revoked. Re-issue it. |
