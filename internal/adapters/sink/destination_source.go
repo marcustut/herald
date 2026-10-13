@@ -22,6 +22,10 @@ type DestinationSource struct {
 	smtpPass     string
 	webhook      *http.Client
 	transport    MailTransport
+	// suppressions, when set, refuses email to a suppressed address. It is nil
+	// for a self-host deployment, where suppression (a hosted deliverability
+	// safeguard) does not apply.
+	suppressions app.SuppressionStore
 }
 
 // NewDestinationSource builds the source. SMTP credentials come from the
@@ -43,6 +47,14 @@ func (s *DestinationSource) WithMailTransport(t MailTransport) *DestinationSourc
 	return s
 }
 
+// WithSuppressions attaches the platform-wide suppression list, so a hosted
+// email delivery to a suppressed address is refused at delivery time. A nil
+// store leaves the check off (the self-host path).
+func (s *DestinationSource) WithSuppressions(store app.SuppressionStore) *DestinationSource {
+	s.suppressions = store
+	return s
+}
+
 func (s *DestinationSource) Sink(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.SinkID) (app.Sink, bool, error) {
 	d, ok, err := s.destinations.Destination(ctx, tenant, project, domain.DestinationID(id))
 	if err != nil || !ok {
@@ -59,8 +71,13 @@ func (s *DestinationSource) Sink(ctx context.Context, tenant domain.TenantID, pr
 	}
 	// The email sink is the report delivery path; reuse it unchanged. Tests can
 	// substitute the transport to observe a delivery without SMTP.
-	if e, ok := built.(*Email); ok && s.transport != nil {
-		e.WithTransport(s.transport)
+	if e, ok := built.(*Email); ok {
+		if s.transport != nil {
+			e.WithTransport(s.transport)
+		}
+		if s.suppressions != nil {
+			return &suppressionGuard{inner: e, address: d.Target, suppressions: s.suppressions}, true, nil
+		}
 	}
 	return built, true, nil
 }

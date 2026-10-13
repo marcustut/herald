@@ -144,3 +144,80 @@ func TestDestinationSourceStoreErrorSurfaces(t *testing.T) {
 }
 
 var _ app.DestinationStore = (*stubDestinations)(nil)
+
+// stubSuppressions is a minimal app.SuppressionStore driven by a fixed set.
+type stubSuppressions struct {
+	byAddress map[string]bool
+	err       error
+}
+
+func (s *stubSuppressions) Suppressed(_ context.Context, address string) (bool, error) {
+	if s.err != nil {
+		return false, s.err
+	}
+	return s.byAddress[address], nil
+}
+
+func (s *stubSuppressions) IngestProviderEvent(context.Context, app.ProviderEvent) (bool, error) {
+	return true, nil
+}
+
+var _ app.SuppressionStore = (*stubSuppressions)(nil)
+
+// TestDestinationSourceRefusesSuppressed proves the suppression list is enforced
+// at delivery time: a suppressed address is refused permanently (dead-lettered,
+// no retry) and the underlying transport is never called.
+func TestDestinationSourceRefusesSuppressed(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_e": destination("dst_e", domain.DestinationEmail, "blocked@example.com", true, now),
+	}}
+	suppressed := &stubSuppressions{byAddress: map[string]bool{"blocked@example.com": true}}
+	ft := &fakeTransport{}
+	src := NewDestinationSource(store, config.Gateway{}, "", "").WithMailTransport(ft).WithSuppressions(suppressed)
+
+	s, ok, err := src.Sink(context.Background(), "ten_a", "alpha", "dst_e")
+	if err != nil || !ok {
+		t.Fatalf("Sink ok=%v err=%v", ok, err)
+	}
+	err = s.Deliver(context.Background(), sampleEvent())
+	if !app.IsSuppressed(err) || !app.IsPermanent(err) {
+		t.Fatalf("err = %v, want a permanent suppression", err)
+	}
+	if len(ft.to) != 0 {
+		t.Fatalf("suppressed address was sent to: %v", ft.to)
+	}
+}
+
+// A suppression lookup failure is retryable: a transient store outage must not
+// silently drop mail.
+func TestDestinationSourceSuppressionStoreErrorIsRetryable(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_e": destination("dst_e", domain.DestinationEmail, "ok@example.com", true, now),
+	}}
+	suppressed := &stubSuppressions{byAddress: map[string]bool{}, err: errors.New("db down")}
+	src := NewDestinationSource(store, config.Gateway{}, "", "").
+		WithMailTransport(&fakeTransport{}).WithSuppressions(suppressed)
+
+	s, _, _ := src.Sink(context.Background(), "ten_a", "alpha", "dst_e")
+	if err := s.Deliver(context.Background(), sampleEvent()); err == nil || app.IsPermanent(err) {
+		t.Fatalf("err = %v, want retryable", err)
+	}
+}
+
+// A verified address that is not suppressed is delivered normally.
+func TestDestinationSourceAllowsNotSuppressed(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_e": destination("dst_e", domain.DestinationEmail, "ok@example.com", true, now),
+	}}
+	src := NewDestinationSource(store, config.Gateway{}, "", "").
+		WithMailTransport(&fakeTransport{}).
+		WithSuppressions(&stubSuppressions{byAddress: map[string]bool{}})
+
+	s, _, _ := src.Sink(context.Background(), "ten_a", "alpha", "dst_e")
+	if err := s.Deliver(context.Background(), sampleEvent()); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+}

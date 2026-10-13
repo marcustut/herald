@@ -131,7 +131,7 @@ func (e *Email) Deliver(_ context.Context, r domain.Event) error {
 		auth = smtp.PlainAuth("", e.cfg.Username, e.cfg.Password, hostOf(e.cfg.Addr))
 	}
 	if err := e.transport.Send(e.cfg.Addr, auth, e.cfg.From, []string{e.cfg.Recipient}, msg); err != nil {
-		return fmt.Errorf("send mail: %w", classifySMTP(err))
+		return fmt.Errorf("send mail: %w", e.classifySMTP(err))
 	}
 	return nil
 }
@@ -140,12 +140,39 @@ func (e *Email) Deliver(_ context.Context, r domain.Event) error {
 // hard-rejected (unknown mailbox, blocked sender), so retrying the same address
 // is pointless. Every other failure — a 4xx, a network error, a TLS refusal —
 // stays retryable.
-func classifySMTP(err error) error {
+//
+// It also strips the recipient address from the error text before it reaches a
+// log line or a stored last_error, while preserving the underlying error so
+// errors.Is/As (bounce, context cancellation) still work.
+func (e *Email) classifySMTP(err error) error {
+	if redacted := redactAddress(err.Error(), e.cfg.Recipient); redacted != err.Error() {
+		err = redactedError{err: err, msg: redacted}
+	}
 	var protoErr *textproto.Error
 	if errors.As(err, &protoErr) && protoErr.Code >= 500 {
 		return app.Bounce(err)
 	}
 	return err
+}
+
+// redactedError keeps the original error chain (errors.Is/As still match) while
+// exposing a message with a recipient address removed.
+type redactedError struct {
+	err error
+	msg string
+}
+
+func (e redactedError) Error() string { return e.msg }
+func (e redactedError) Unwrap() error { return e.err }
+
+// redactAddress removes a recipient address from a message so a log or stored
+// last_error never carries the mailbox. It is the same marker domain.Redact
+// uses for secrets.
+func redactAddress(msg, address string) string {
+	if address == "" {
+		return msg
+	}
+	return strings.ReplaceAll(msg, address, domain.RedactionMarker)
 }
 
 func (e *Email) buildMessage(r domain.Event) ([]byte, error) {

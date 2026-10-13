@@ -32,16 +32,21 @@ type stores struct {
 	destinations      app.DestinationStore
 	destVerifications app.DestinationVerificationStore
 	sinkDirectory     app.SinkDirectory
-	close             func()
+	// suppressions is the platform-wide do-not-send list. It is hosted-only
+	// (nil in dev/self-host mode), so the delivery guard is only applied when a
+	// database backs the hosted surface.
+	suppressions app.SuppressionStore
+	close        func()
 }
 
 // dispatchSinks selects the dispatcher's sink source. A hosted deployment
 // resolves each delivery's destination from the database, so removal,
-// disablement and verification are enforcement points at delivery time; a
-// self-host deployment keeps the sinks built from gateway.toml.
+// disablement and verification are enforcement points at delivery time, and
+// applies the suppression list; a self-host deployment keeps the sinks built
+// from gateway.toml.
 func dispatchSinks(cfg config.Gateway, st stores, static map[domain.SinkID]app.Sink, smtpUser, smtpPass string) app.SinkSource {
 	if cfg.Cloud.Enabled && st.destinations != nil {
-		return sink.NewDestinationSource(st.destinations, cfg, smtpUser, smtpPass)
+		return sink.NewDestinationSource(st.destinations, cfg, smtpUser, smtpPass).WithSuppressions(st.suppressions)
 	}
 	return app.SinkMap(static)
 }
@@ -79,6 +84,7 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		destinations:      ownership,
 		destVerifications: postgres.NewDestinationVerifications(pool),
 		sinkDirectory:     ownership,
+		suppressions:      postgres.NewSuppressions(pool),
 		close:             pool.Close,
 	}, nil
 }

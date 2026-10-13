@@ -17,6 +17,9 @@ const (
 	// OutcomeBounce is a permanent recipient rejection (a hard SMTP bounce)
 	// dead-lettered immediately instead of retried.
 	OutcomeBounce DeliveryOutcome = "bounce"
+	// OutcomeSuppressed is a permanent refusal of a recipient on the
+	// suppression list, dead-lettered immediately instead of retried.
+	OutcomeSuppressed DeliveryOutcome = "suppressed"
 )
 
 // Observer receives operational measurements for metrics. It is a port so the
@@ -44,6 +47,14 @@ type Observer interface {
 	// deliveries across all tenants, sampled by the dispatcher, for queue
 	// congestion alerting.
 	ObserveQueueDepth(depth int)
+	// ObserveEmailEvent records one ingested provider notification, by bounded
+	// kind (delivery, bounce, complaint). Acceptance and cost are derived from
+	// the delivery and bounce counters; the provider is the billing source of
+	// truth.
+	ObserveEmailEvent(kind string)
+	// ObserveSuppression records that an address was added to the suppression
+	// list, by bounded reason (bounce, complaint).
+	ObserveSuppression(reason string)
 }
 
 // NoopObserver discards every measurement. It is the zero value used when no
@@ -55,6 +66,8 @@ func (NoopObserver) ObserveDelivery(domain.SinkID, DeliveryOutcome, time.Duratio
 func (NoopObserver) ObserveDispatchPoll(time.Time)                                 {}
 func (NoopObserver) ObserveSubmitRejection(string)                                 {}
 func (NoopObserver) ObserveQueueDepth(int)                                         {}
+func (NoopObserver) ObserveEmailEvent(string)                                      {}
+func (NoopObserver) ObserveSuppression(string)                                     {}
 
 var _ Observer = NoopObserver{}
 

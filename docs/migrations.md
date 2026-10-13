@@ -61,6 +61,17 @@ cascade away with their destination. A destination is delivered to only once it
 is verified. It is purely additive: no existing row is read or rewritten, so an
 existing database upgrades with no data loss.
 
+### Email safety (version 5)
+
+`email_safety` adds the outbound-email safeguards: `suppressions`, the
+platform-wide do-not-send list an address enters after a hard bounce or a
+complaint, and `email_provider_events`, which records each ingested provider
+notification by its id so a replayed webhook is a no-op. Only the fields Herald
+acts on are stored (event id, kind, address, permanence, time); the raw provider
+payload is never persisted. It is purely additive: no existing row is read or
+rewritten, and a self-host deployment that never enables the hosted surface
+simply ignores both tables.
+
 ### Checksum verification
 
 If the SQL of an already-applied step no longer hashes to the recorded

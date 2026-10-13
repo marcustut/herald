@@ -41,6 +41,13 @@ type Cloud struct {
 	// Destinations is the hosted destination surface. Nil (a deployment that
 	// has not wired it) leaves the destination routes unregistered.
 	Destinations *app.Destinations
+	// EmailEvents is the provider bounce/complaint ingestion use case. Nil, or
+	// an empty BounceSecret, leaves the email-event route unregistered so a
+	// self-host or unconfigured deployment 404s it as if it were absent.
+	EmailEvents *app.EmailEvents
+	// BounceSecret is the shared secret the provider webhook must present. It is
+	// read from HERALD_BOUNCE_WEBHOOK_SECRET, never from the config file.
+	BounceSecret string
 	// Events is the read-only, tenant-scoped event/delivery log behind the
 	// dashboard. Nil leaves the dashboard query routes unregistered.
 	Events app.EventLog
@@ -54,6 +61,7 @@ func (c *Cloud) register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /cloud/v1/account", c.handleDeleteAccount)
 	c.registerProjects(mux)
 	c.registerDestinations(mux)
+	c.registerEmailEvents(mux)
 	c.registerDashboard(mux)
 }
 

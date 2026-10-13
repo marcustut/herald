@@ -128,6 +128,9 @@ each call creates a distinct event.
   with Docker Compose.
 - [docs/smtp-gmail.md](docs/smtp-gmail.md) — get SMTP credentials (a Gmail App
   Password) so Herald can email you, plus other providers.
+- [docs/deliverability.md](docs/deliverability.md) — SPF/DKIM/DMARC records to
+  publish and how to wire provider bounce/complaint webhooks into the
+  suppression list.
 
 ## License
 

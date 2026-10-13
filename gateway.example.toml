@@ -29,6 +29,11 @@ from_name = "Herald"
 [cloud]
 enabled = false
 # base_url = "https://cloud.example.com"
+# Provider bounce/complaint webhook. When true, POST /cloud/v1/email/events
+# ingests SES/SNS (or generic) notifications and suppresses hard-bounced or
+# complaining addresses. Requires HERALD_BOUNCE_WEBHOOK_SECRET and cloud.enabled.
+# See docs/deliverability.md.
+# bounce_webhook = false
 
 # Outbound-delivery hardening. A webhook URL only ever comes from this file;
 # these settings constrain those admin-configured URLs. Non-loopback SMTP

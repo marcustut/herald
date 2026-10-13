@@ -184,6 +184,17 @@ routes. It authenticates with the session cookie and sends the CSRF token
 Every successful mutation is audited through the structured logger with the
 actor, tenant, project and action — never a raw secret.
 
+## Bounces, complaints and suppression
+
+Provider bounce and complaint notifications are ingested at
+`POST /cloud/v1/email/events`, shared-secret authenticated and replay-safe by
+provider event id. A hard bounce or a complaint adds the address to the
+platform-wide suppression list; the hosted delivery path then refuses it
+permanently. The route is only mounted under `[cloud] bounce_webhook = true`
+with `HERALD_BOUNCE_WEBHOOK_SECRET` set. See
+[deliverability.md](deliverability.md) for the DNS records and the owner's
+wiring steps.
+
 ## Self-host compatibility
 
 A deployment that never sets `[cloud]` is unchanged: no accounts surface, no
@@ -192,8 +203,8 @@ additive, so an existing Event database upgrades with no data loss.
 
 ## Deferred
 
-Not part of this milestone and deliberately not built here: bounce/suppression
-handling (#32), the dashboard (#33), `herald login` (#34) and quotas (#35). The
-project/token self-service surface above is #30. Token `last_used_at` is part of
-the metadata contract but is not yet written on authentication, so it currently
-always reads empty.
+Not part of this milestone and deliberately not built here: the dashboard (#33),
+`herald login` (#34) and the remaining quota work (#35). The project/token
+self-service surface above is #30. Token `last_used_at` is part of the metadata
+contract but is not yet written on authentication, so it currently always reads
+empty.

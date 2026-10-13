@@ -90,6 +90,10 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 			fmt.Fprintln(stderr, "error: cloud.enabled requires a database (set --database-url or HERALD_DATABASE_URL)")
 			return 1
 		}
+		if cfg.Cloud.BounceWebhook && os.Getenv("HERALD_BOUNCE_WEBHOOK_SECRET") == "" {
+			fmt.Fprintln(stderr, "error: cloud.bounce_webhook requires HERALD_BOUNCE_WEBHOOK_SECRET")
+			return 1
+		}
 		// Hosted deployments resolve a project's destinations from the database
 		// instead of gateway.toml; self-host keeps the config-driven directory.
 		if st.sinkDirectory == nil {
@@ -152,7 +156,7 @@ func cloudAPI(cfg config.Gateway, st stores, logger *slog.Logger) *httpapi.Cloud
 		Password:      os.Getenv("HERALD_SMTP_PASSWORD"),
 		TLSServerName: cfg.SMTP.ServerName,
 	})
-	return &httpapi.Cloud{
+	cloud := &httpapi.Cloud{
 		Auth: app.Auth{
 			Identities: st.identities,
 			Tokens:     st.loginTokens,
@@ -186,4 +190,12 @@ func cloudAPI(cfg config.Gateway, st stores, logger *slog.Logger) *httpapi.Cloud
 		CookieSecure: strings.HasPrefix(cfg.Cloud.BaseURL, "https://"),
 		Logger:       logger,
 	}
+	// The bounce/complaint ingestion route is only mounted when the use case is
+	// wired and the shared secret is set; runServe has already refused an
+	// enabled gate with no secret.
+	if cfg.Cloud.BounceWebhook {
+		cloud.EmailEvents = &app.EmailEvents{Suppressions: st.suppressions, Clock: systemClock{}}
+		cloud.BounceSecret = os.Getenv("HERALD_BOUNCE_WEBHOOK_SECRET")
+	}
+	return cloud
 }

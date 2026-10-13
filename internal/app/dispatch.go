@@ -92,13 +92,16 @@ func (d Dispatcher) process(ctx context.Context, del *domain.Delivery) error {
 
 // outcomeOf maps the terminal/retry state a delivery landed in to the bounded
 // outcome label. A dead delivery whose cause was a recipient bounce is counted
-// as a bounce, so hard rejections are visible separately from other dead
-// letters.
+// as a bounce, and one refused because the address is suppressed is counted as
+// a suppression, so both are visible separately from other dead letters.
 func outcomeOf(state domain.DeliveryState, cause error) DeliveryOutcome {
 	switch state {
 	case domain.DeliveryDelivered:
 		return OutcomeDelivered
 	case domain.DeliveryDead:
+		if IsSuppressed(cause) {
+			return OutcomeSuppressed
+		}
 		if IsBounce(cause) {
 			return OutcomeBounce
 		}

@@ -365,6 +365,19 @@ func TestCloudGate(t *testing.T) {
 		}
 	})
 
+	t.Run("bounce webhook needs cloud enabled", func(t *testing.T) {
+		if _, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=false\nbounce_webhook=true\n")); err == nil {
+			t.Fatal("bounce_webhook without cloud.enabled should fail")
+		}
+		g, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=true\nbase_url=\"https://cloud.example.com\"\nbounce_webhook=true\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"herald@example.com\"\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !g.Cloud.BounceWebhook {
+			t.Fatal("cloud.bounce_webhook not threaded")
+		}
+	})
+
 	for _, tt := range []struct {
 		name string
 		body string
