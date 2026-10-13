@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"github.com/marcustut/herald/internal/app"
 	"github.com/marcustut/herald/internal/config"
@@ -54,11 +55,13 @@ func (d *Directory) EnabledSinks(_ context.Context, _ domain.TenantID, project d
 var _ app.SinkDirectory = (*Directory)(nil)
 
 // Build constructs every configured sink. SMTP credentials are passed in from
-// the environment, never from the config file.
+// the environment, never from the config file. Webhook sinks share one hardened
+// HTTP client built from the [security] settings.
 func Build(cfg config.Gateway, smtpUser, smtpPass string) (map[domain.SinkID]app.Sink, error) {
+	webhookClient := NewHTTPClient(WebhookTimeout, cfg.Security.AllowPrivateNetworks)
 	sinks := make(map[domain.SinkID]app.Sink, len(cfg.Sinks))
 	for id, sc := range cfg.Sinks {
-		s, err := build(id, sc, cfg.SMTP, smtpUser, smtpPass)
+		s, err := build(id, sc, cfg.SMTP, smtpUser, smtpPass, webhookClient)
 		if err != nil {
 			return nil, err
 		}
@@ -67,7 +70,7 @@ func Build(cfg config.Gateway, smtpUser, smtpPass string) (map[domain.SinkID]app
 	return sinks, nil
 }
 
-func build(id string, sc config.Sink, smtpCfg config.SMTP, user, pass string) (app.Sink, error) {
+func build(id string, sc config.Sink, smtpCfg config.SMTP, user, pass string, webhookClient *http.Client) (app.Sink, error) {
 	switch sc.Kind {
 	case "email":
 		return NewEmail(domain.SinkID(id), EmailConfig{
@@ -80,7 +83,7 @@ func build(id string, sc config.Sink, smtpCfg config.SMTP, user, pass string) (a
 			TLSServerName: smtpCfg.ServerName,
 		}), nil
 	case "webhook":
-		return NewWebhook(domain.SinkID(id), sc.URL, nil), nil
+		return NewWebhook(domain.SinkID(id), sc.URL, webhookClient), nil
 	default:
 		return nil, fmt.Errorf("unknown sink kind %q", sc.Kind)
 	}

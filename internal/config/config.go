@@ -4,7 +4,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -17,9 +20,26 @@ import (
 type Gateway struct {
 	Server   Server             `toml:"server"`
 	SMTP     SMTP               `toml:"smtp"`
+	Security Security           `toml:"security"`
 	Limits   Limits             `toml:"limits"`
 	Projects map[string]Project `toml:"projects"`
 	Sinks    map[string]Sink    `toml:"sinks"`
+}
+
+// Security holds the outbound-delivery hardening knobs. A webhook destination
+// can only ever come from this file (the request body and event content have no
+// path to it); these settings constrain those admin-configured URLs further.
+// See docs/security.md.
+type Security struct {
+	// WebhookAllowHosts, when non-empty, restricts webhook sinks to these hosts
+	// (case-insensitive; a port is ignored). Empty allows any host, still
+	// subject to the dial-time private-network guard.
+	WebhookAllowHosts []string `toml:"webhook_allow_hosts"`
+	// AllowPrivateNetworks permits webhook delivery to loopback, private and
+	// link-local addresses (for a receiver on a trusted internal network). Off
+	// by default, so a misconfigured or redirected URL cannot reach cloud
+	// metadata (169.254.169.254) or intranet services.
+	AllowPrivateNetworks bool `toml:"allow_private_networks"`
 }
 
 // Built-in submit limits, applied to every project that does not override them.
@@ -176,6 +196,9 @@ func (g Gateway) Validate() error {
 	if err := g.Limits.validate("limits"); err != nil {
 		return err
 	}
+	if err := g.Security.validate(); err != nil {
+		return err
+	}
 	for slug, p := range g.Projects {
 		if slug == "" {
 			return errors.New("project slug must not be empty")
@@ -196,9 +219,70 @@ func (g Gateway) Validate() error {
 			if err := sink.Validate(); err != nil {
 				return fmt.Errorf("sink %q: %w", id, err)
 			}
+			if sink.Kind == "webhook" {
+				u, _ := parseWebhookURL(sink.URL)
+				if !g.Security.webhookHostAllowed(u) {
+					return fmt.Errorf("sink %q: webhook host %q is not in security.webhook_allow_hosts", id, u.Host)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+func (s Security) validate() error {
+	for _, h := range s.WebhookAllowHosts {
+		if hostOnly(h) == "" {
+			return errors.New("security.webhook_allow_hosts contains an empty host")
+		}
+	}
+	return nil
+}
+
+// webhookHostAllowed reports whether a webhook host passes the optional
+// allowlist. An empty allowlist permits any host; the dial-time guard still
+// blocks non-public addresses.
+func (s Security) webhookHostAllowed(u *url.URL) bool {
+	if len(s.WebhookAllowHosts) == 0 || u == nil {
+		return true
+	}
+	host := hostOnly(u.Host)
+	for _, allowed := range s.WebhookAllowHosts {
+		if hostOnly(allowed) == host {
+			return true
+		}
+	}
+	return false
+}
+
+// hostOnly lowercases a host and drops a trailing port, so allowlist entries
+// and URLs compare by name alone.
+func hostOnly(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		return h
+	}
+	return s
+}
+
+// parseWebhookURL validates a webhook destination at configuration load. Only
+// absolute http/https URLs with a host are accepted, so file:, data: and
+// protocol-relative targets are rejected before any sink is built.
+func parseWebhookURL(raw string) (*url.URL, error) {
+	if raw == "" {
+		return nil, errors.New("webhook sink requires url")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("webhook sink url: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("webhook sink url scheme %q is not http or https", u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, errors.New("webhook sink url requires a host")
+	}
+	return u, nil
 }
 
 func (s Sink) Validate() error {
@@ -208,8 +292,8 @@ func (s Sink) Validate() error {
 			return errors.New("email sink requires recipient")
 		}
 	case "webhook":
-		if s.URL == "" {
-			return errors.New("webhook sink requires url")
+		if _, err := parseWebhookURL(s.URL); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("unknown sink kind %q", s.Kind)
