@@ -243,6 +243,47 @@ func TestLoginCloudMagicLink(t *testing.T) {
 	}
 }
 
+// TestLoginEmailBeatsEnvToken guards the precedence: an explicit --email must
+// run the magic-link flow even when HERALD_TOKEN is set in the environment.
+func TestLoginEmailBeatsEnvToken(t *testing.T) {
+	var magicHit bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/auth/magic-link", func(w http.ResponseWriter, _ *http.Request) {
+		magicHit = true
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"sent"}`))
+	})
+	mux.HandleFunc("GET /v1/auth/callback", func(w http.ResponseWriter, _ *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "herald_session", Value: "sess", Path: "/"})
+		_, _ = w.Write([]byte(`{"csrfToken":"csrf-1","user":{"email":"me@example.com"}}`))
+	})
+	mux.HandleFunc("GET /v1/projects", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"projects":[{"id":"axis"}]}`))
+	})
+	mux.HandleFunc("POST /v1/projects/axis/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"token":"herald_axis_cloud","kind":"project","projects":["axis"]}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	t.Chdir(t.TempDir())
+	t.Setenv("HERALD_CONFIG_DIR", t.TempDir())
+	t.Setenv("HERALD_TOKEN", "herald_stale_env")
+
+	link := srv.URL + "/v1/auth/callback?token=link-token-123\n"
+	code, _, errOut := run(t, link, "login", "--gateway", srv.URL, "--project", "axis", "--email", "me@example.com")
+	if code != 0 {
+		t.Fatalf("code=%d err=%s", code, errOut)
+	}
+	if !magicHit {
+		t.Fatal("login did not run the magic-link flow: HERALD_TOKEN took precedence over --email")
+	}
+	if got, _ := credentials.Token(); got != "herald_axis_cloud" {
+		t.Fatalf("stored token = %q, want the minted cloud token", got)
+	}
+}
+
 func TestLoginCloudReusesExistingProject(t *testing.T) {
 	created := false
 	mux := http.NewServeMux()
