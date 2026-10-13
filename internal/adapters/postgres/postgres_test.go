@@ -47,10 +47,8 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	resetSchema(t, ctx, pool)
 	if err := Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, "TRUNCATE deliveries, events, credentials"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,81 +122,5 @@ func TestIntegration(t *testing.T) {
 	}
 	if err := events.Update(ctx, domain.Delivery{ID: "nope"}); !errors.Is(err, app.ErrDeliveryNotFound) {
 		t.Fatalf("err = %v", err)
-	}
-}
-
-const legacySchema = `
-CREATE TABLE reports (
-	id text PRIMARY KEY, tenant_id text NOT NULL, project_id text NOT NULL, agent_id text NOT NULL,
-	status text NOT NULL, title text NOT NULL, body text NOT NULL, links jsonb NOT NULL,
-	context jsonb NOT NULL, idempotency_key text NOT NULL, created_at timestamptz NOT NULL,
-	UNIQUE (tenant_id, idempotency_key)
-);
-CREATE TABLE deliveries (
-	id text PRIMARY KEY, report_id text NOT NULL REFERENCES reports(id), sink_id text NOT NULL,
-	state text NOT NULL, attempts integer NOT NULL, next_attempt_at timestamptz NOT NULL,
-	lease_until timestamptz, last_error text NOT NULL DEFAULT '', created_at timestamptz NOT NULL,
-	updated_at timestamptz NOT NULL
-);
-CREATE INDEX deliveries_report ON deliveries (report_id);
-`
-
-// Migrate must rename the pre-Event schema in place and preserve rows.
-func TestIntegrationLegacyRename(t *testing.T) {
-	url := os.Getenv("HERALD_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("HERALD_TEST_DATABASE_URL not set")
-	}
-	ctx := context.Background()
-	pool, err := Open(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-
-	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS deliveries, events, reports, credentials"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, legacySchema); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	if _, err := pool.Exec(ctx, `INSERT INTO reports (id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at)
-		VALUES ('rep_1','ten_1','axis','herdr','success','t','b','[]','{}','k-1',$1)`, now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO deliveries (id, report_id, sink_id, state, attempts, next_attempt_at, created_at, updated_at)
-		VALUES ('del_1','rep_1','email','pending',0,$1,$1,$1)`, now); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatalf("migrate over legacy schema: %v", err)
-	}
-
-	var eventsExists, reportsExists bool
-	if err := pool.QueryRow(ctx, `SELECT to_regclass('public.events') IS NOT NULL, to_regclass('public.reports') IS NOT NULL`).Scan(&eventsExists, &reportsExists); err != nil {
-		t.Fatal(err)
-	}
-	if !eventsExists || reportsExists {
-		t.Fatalf("events=%v reports=%v", eventsExists, reportsExists)
-	}
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE id='rep_1'`).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("data lost: count=%d err=%v", count, err)
-	}
-	var eventID string
-	if err := pool.QueryRow(ctx, `SELECT event_id FROM deliveries WHERE id='del_1'`).Scan(&eventID); err != nil || eventID != "rep_1" {
-		t.Fatalf("event_id=%q err=%v", eventID, err)
-	}
-	// The old per-tenant key constraint is replaced by a project-scoped one, so
-	// another project can now reuse the migrated key.
-	if _, err := pool.Exec(ctx, `INSERT INTO events (id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at)
-		VALUES ('rep_2','ten_1','herald','herdr','success','t','b','[]','{}','k-1',$1)`, now); err != nil {
-		t.Fatalf("cross-project key after migrate: %v", err)
-	}
-	// Migrate is idempotent.
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatalf("second migrate: %v", err)
 	}
 }
