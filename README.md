@@ -108,7 +108,8 @@ each call creates a distinct event.
   # or place it wherever your harness reads skills / AGENTS.md
   ```
 - **MCP** — `herald mcp` for harnesses that prefer a structured tool.
-- **herdr plugin** — event-driven, hooks `pane.agent_status_changed` (issue #1).
+- **herdr plugin** — event-driven, hooks `pane.agent_status_changed` (issue #1);
+  see [docs/herdr-plugin.md](docs/herdr-plugin.md).
 
 See [DECISIONS-AND-BLOCKERS.md](DECISIONS-AND-BLOCKERS.md).
 
