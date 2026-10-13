@@ -21,7 +21,8 @@ cp gateway.docker.example.toml gateway.toml
 
 Edit `.env` so `HERALD_DATABASE_URL` and `HERALD_POSTGRES_PASSWORD` agree
 (`change-me` is fine for a local run), and fill the SMTP settings if you want
-email. Then edit `gateway.toml`: set a `[sinks.*]` recipient and a
+email — see [smtp-gmail.md](smtp-gmail.md) if you need credentials.
+Then edit `gateway.toml`: set a `[sinks.*]` recipient and a
 `[projects.<name>]` for your project. Start it:
 
 ```sh
@@ -116,7 +117,7 @@ done" and it will call Herald.
 | `herald.toml already exists` | Review it, then re-run with `--force`. |
 | `401 unauthenticated` | The token's project does not match `project` in `herald.toml`, or it was revoked. Re-issue it. |
 | `503 unavailable` / `/readyz` not ready | The API cannot reach PostgreSQL; check `.env` and `docker compose ps`. |
-| Events accepted but no email | The dispatcher has no working SMTP path; `docker compose logs herald-dispatcher`. |
+| Events accepted but no email | The dispatcher has no working SMTP path ([smtp-gmail.md](smtp-gmail.md)); `docker compose logs herald-dispatcher`. |
 
 Full Docker operations, security notes, and non-Docker (NixOS) hosting live in
 [self-hosting-docker.md](self-hosting-docker.md).

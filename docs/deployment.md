@@ -101,6 +101,9 @@ Keep `addr` on loopback. `server_name` must match the SMTP server's certificate
 when the submission host is dialled by IP (otherwise delivery fails with
 `x509: cannot validate certificate … doesn't contain any IP SANs`).
 
+No submission server of your own? [smtp-gmail.md](smtp-gmail.md) shows how to get
+credentials from a Gmail account and point Herald at `smtp.gmail.com:587`.
+
 ## 4. Secrets via sops-nix
 
 The systemd services get exactly three variables from an `EnvironmentFile`; the
