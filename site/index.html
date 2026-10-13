@@ -108,27 +108,22 @@
     <h2 id="skills-h">Install the skill</h2>
     <p>You don't run this by hand — the agent does. Install the skill once and
     the agent calls <code>herald send</code> when a task finishes, but only if
-    you asked to be notified. Pick your harness:</p>
+    you asked. One command covers Claude Code, Codex, and OpenCode:</p>
 
     <div class="harnesses">
       <div class="harness">
-        <p class="harness-name">Claude Code</p>
-        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-claude">herald skill &gt; ~/.claude/skills/herald-notify/SKILL.md</code></span><button class="copy" type="button" data-copy="skill-claude" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
+        <p class="harness-name">Claude Code · Codex · OpenCode</p>
+        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-add">npx skills add marcustut/herald --skill herald-notify -g</code></span><button class="copy" type="button" data-copy="skill-add" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
       </div>
       <div class="harness">
-        <p class="harness-name">Codex</p>
-        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-codex">herald skill &gt;&gt; AGENTS.md</code></span><button class="copy" type="button" data-copy="skill-codex" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
-      </div>
-      <div class="harness">
-        <p class="harness-name">OpenCode</p>
-        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-opencode">herald skill &gt;&gt; AGENTS.md</code></span><button class="copy" type="button" data-copy="skill-opencode" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
+        <p class="harness-name">Manual — any harness that reads a skill file</p>
+        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="skill-manual">herald skill &gt; ~/.claude/skills/herald-notify/SKILL.md</code></span><button class="copy" type="button" data-copy="skill-manual" aria-label="Copy command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
       </div>
     </div>
 
-    <p class="footnote">Claude Code reads <code>~/.claude/skills</code>;
-    Codex and OpenCode read <code>AGENTS.md</code> (commit it, or use the
-    harness's global file). The gateway is harness-agnostic — the CLI, MCP
-    (<code>send_event</code>), or a lifecycle hook all hit
+    <p class="footnote"><code>-g</code> installs globally for supported agents;
+    omit it to install into the current project. The gateway is harness-agnostic —
+    the CLI, MCP (<code>send_event</code>), or a lifecycle hook all hit
     <code>POST /v1/events</code>.</p>
   </section>
 
