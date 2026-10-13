@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS events (
 	context         jsonb NOT NULL,
 	idempotency_key text NOT NULL,
 	created_at      timestamptz NOT NULL,
-	UNIQUE (tenant_id, idempotency_key)
+	UNIQUE (tenant_id, project_id, idempotency_key)
 );
 
 CREATE TABLE IF NOT EXISTS deliveries (
@@ -76,6 +76,33 @@ CREATE TABLE IF NOT EXISTS deliveries (
 
 CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries (state, next_attempt_at);
 CREATE INDEX IF NOT EXISTS deliveries_event ON deliveries (event_id);
+
+-- Scope idempotency to (tenant, project, key) so two projects can reuse a key.
+-- The legacy constraint was unique per tenant, which is strictly narrower, so
+-- widening it can never conflict with existing rows. Guarded and idempotent.
+DO $$
+DECLARE
+	old_name text;
+BEGIN
+	SELECT conname INTO old_name
+	FROM pg_constraint
+	WHERE conrelid = 'public.events'::regclass
+	  AND contype = 'u'
+	  AND pg_get_constraintdef(oid) = 'UNIQUE (tenant_id, idempotency_key)';
+	IF old_name IS NOT NULL THEN
+		EXECUTE format('ALTER TABLE events DROP CONSTRAINT %I', old_name);
+	END IF;
+
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint
+		WHERE conrelid = 'public.events'::regclass
+		  AND contype = 'u'
+		  AND pg_get_constraintdef(oid) = 'UNIQUE (tenant_id, project_id, idempotency_key)'
+	) THEN
+		ALTER TABLE events ADD CONSTRAINT events_tenant_project_idempotency_key
+			UNIQUE (tenant_id, project_id, idempotency_key);
+	END IF;
+END $$;
 `
 
 // Open connects to PostgreSQL and verifies the connection.
@@ -248,8 +275,8 @@ func (s *Events) ByID(ctx context.Context, id domain.EventID) (domain.Event, boo
 	return rep, err == nil, err
 }
 
-func (s *Events) ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error) {
-	row := s.pool.QueryRow(ctx, selectEvent+` WHERE tenant_id = $1 AND idempotency_key = $2`, string(tenant), string(key))
+func (s *Events) ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, key domain.IdempotencyKey) (domain.Event, bool, error) {
+	row := s.pool.QueryRow(ctx, selectEvent+` WHERE tenant_id = $1 AND project_id = $2 AND idempotency_key = $3`, string(tenant), string(project), string(key))
 	rep, err := scanEvent(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Event{}, false, nil

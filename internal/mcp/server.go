@@ -105,6 +105,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 		Agent          string        `json:"agent"`
 		Host           string        `json:"host"`
 		Links          []client.Link `json:"links"`
+		OccurrenceID   string        `json:"occurrenceId"`
 		IdempotencyKey string        `json:"idempotencyKey"`
 	}
 	if err := json.Unmarshal(params.Arguments, &args); err != nil {
@@ -126,6 +127,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 		Agent:          agent,
 		Host:           host,
 		Links:          args.Links,
+		OccurrenceID:   args.OccurrenceID,
 		IdempotencyKey: args.IdempotencyKey,
 	})
 	if err != nil {
@@ -147,7 +149,8 @@ func sendEventTool() map[string]any {
 				"agent":          map[string]any{"type": "string", "description": "Agent name (defaults to the configured agent)"},
 				"host":           map[string]any{"type": "string", "description": "Machine the agent ran on"},
 				"links":          map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"label": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}}, "required": []string{"label", "url"}}},
-				"idempotencyKey": map[string]any{"type": "string", "description": "Stable key so a retry does not duplicate the event"},
+				"occurrenceId":   map[string]any{"type": "string", "description": "Stable id for one logical event; resending it is a safe retry. Omit to send a new event each call."},
+				"idempotencyKey": map[string]any{"type": "string", "description": "Explicit retry key; alternative to occurrenceId"},
 			},
 			"required": []string{"status", "title"},
 		},

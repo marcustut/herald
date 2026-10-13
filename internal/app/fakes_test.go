@@ -93,8 +93,9 @@ func (g *fakeIDs) NewDeliveryID() domain.DeliveryID {
 }
 
 type eventKey struct {
-	tenant domain.TenantID
-	key    domain.IdempotencyKey
+	tenant  domain.TenantID
+	project domain.ProjectID
+	key     domain.IdempotencyKey
 }
 
 type fakeEvents struct {
@@ -116,7 +117,7 @@ func (r *fakeEvents) Save(_ context.Context, rep domain.Event, ds []domain.Deliv
 	if r.conflict {
 		return ErrIdempotencyConflict
 	}
-	k := eventKey{rep.TenantID, rep.IdempotencyKey}
+	k := eventKey{rep.TenantID, rep.ProjectID, rep.IdempotencyKey}
 	if _, ok := r.byKey[k]; ok {
 		return ErrIdempotencyConflict
 	}
@@ -125,11 +126,11 @@ func (r *fakeEvents) Save(_ context.Context, rep domain.Event, ds []domain.Deliv
 	return nil
 }
 
-func (r *fakeEvents) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error) {
+func (r *fakeEvents) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, project domain.ProjectID, key domain.IdempotencyKey) (domain.Event, bool, error) {
 	if r.lookupErr != nil {
 		return domain.Event{}, false, r.lookupErr
 	}
-	rep, ok := r.byKey[eventKey{tenant, key}]
+	rep, ok := r.byKey[eventKey{tenant, project, key}]
 	return rep, ok, nil
 }
 

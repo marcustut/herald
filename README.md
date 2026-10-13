@@ -78,6 +78,22 @@ echo '{"status":"failure","title":"build broke"}' | herald send --json
 | `herald mcp` | MCP server (stdio) exposing a `send_event` tool |
 | `herald skill` | print the agent SKILL.md for installation |
 
+## Idempotency
+
+Every submission is a **new event** by default, even when its text matches an
+earlier one. To make a retry of one logical occurrence safe, send a stable
+`occurrenceId`:
+
+- HTTP: `{"occurrenceId":"deploy-2026-10-13", "status":"success", …}`
+- CLI: `herald send --occurrence-id deploy-2026-10-13 --status success …`
+- MCP: the `occurrenceId` argument of the `send_event` tool.
+
+Repeating the same occurrence id (scoped to tenant + project) returns the
+original event id and does not fan out twice. A raw `idempotencyKey` is still
+accepted for backward compatibility and is likewise scoped to tenant + project,
+so two projects can reuse a key without suppressing each other. Omit both and
+each call creates a distinct event.
+
 ## Integration surfaces
 
 - **Skill + CLI** — `herald skill` prints a SKILL.md that teaches an agent to

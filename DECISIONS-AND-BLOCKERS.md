@@ -22,6 +22,10 @@ what still needs you before deployment. See `README.md` for usage.
   at rest; raw shown once. Agent/host are asserted by the trusted client, never
   trusted from the body.
 - **Redaction at ingest** (the DB holds the redacted copy).
+- **Idempotency:** each submission is a new occurrence. A stable `occurrenceId`
+  (or the legacy `idempotencyKey`) dedupes retries, scoped to
+  `(tenant_id, project_id, idempotency_key)`; with neither, the server mints a
+  unique key so identical text never collapses two events. No content hashing.
 - **Token issuance** via `herald token …` against PostgreSQL (no HTTP
   provisioning endpoint).
 - **HTTP API:** `POST /v1/events` → `202 {"id":…}` (`POST /v1/reports` is a deprecated alias); error codes

@@ -16,6 +16,10 @@ type LinkInput struct {
 // SubmitRequest is the transport-agnostic shape of POST /v1/events. Agent and
 // Context are asserted by the trusted client; Tenant and Project come from the
 // principal, never the request.
+//
+// OccurrenceID and IdempotencyKey both mark a retry of one logical event. An
+// occurrence id is the preferred, stable choice; OccurrenceID wins when both are
+// set. With neither, each submission is a new occurrence.
 type SubmitRequest struct {
 	Status         string
 	Title          string
@@ -23,6 +27,7 @@ type SubmitRequest struct {
 	Links          []LinkInput
 	Context        map[string]string
 	Agent          string
+	OccurrenceID   string
 	IdempotencyKey string
 }
 
@@ -35,18 +40,16 @@ type SubmitEvent struct {
 	Clock  Clock
 }
 
-// Handle returns the event id. A replay of the same (tenant, idempotency key)
-// returns the original id without creating a second event or re-fanning out.
+// Handle returns the event id. A retry that repeats an occurrence id (or an
+// explicit idempotency key) returns the original id without creating a second
+// event or re-fanning out. A submission without either is always a new
+// occurrence, even when its content matches an earlier one.
 func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req SubmitRequest) (domain.EventID, error) {
 	status, err := domain.ParseStatus(req.Status)
 	if err != nil {
 		return "", err
 	}
 	agent, err := domain.ParseAgentID(req.Agent)
-	if err != nil {
-		return "", err
-	}
-	key, err := domain.ParseIdempotencyKey(req.IdempotencyKey)
 	if err != nil {
 		return "", err
 	}
@@ -58,15 +61,27 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 	if err != nil {
 		return "", err
 	}
-
-	if existing, ok, err := uc.Events.ByIdempotencyKey(ctx, p.TenantID, key); err != nil {
+	key, dedupe, err := submissionKey(req)
+	if err != nil {
 		return "", err
-	} else if ok {
-		return existing.ID, nil
 	}
 
+	if dedupe {
+		if existing, ok, err := uc.Events.ByIdempotencyKey(ctx, p.TenantID, p.ProjectID, key); err != nil {
+			return "", err
+		} else if ok {
+			return existing.ID, nil
+		}
+	}
+
+	eventID := uc.IDs.NewEventID()
+	if !dedupe {
+		// A new occurrence gets a unique key so identical content does not
+		// collapse two distinct events into one.
+		key = domain.IdempotencyKey("auto_" + string(eventID))
+	}
 	event, err := domain.NewEvent(domain.NewEventInput{
-		ID:             uc.IDs.NewEventID(),
+		ID:             eventID,
 		TenantID:       p.TenantID,
 		ProjectID:      p.ProjectID,
 		AgentID:        agent,
@@ -94,9 +109,9 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 	}
 
 	if err := uc.Events.Save(ctx, event, deliveries); err != nil {
-		// A concurrent request may have won the idempotency race.
-		if errors.Is(err, ErrIdempotencyConflict) {
-			existing, ok, lookupErr := uc.Events.ByIdempotencyKey(ctx, p.TenantID, key)
+		// A concurrent retry may have won the idempotency race.
+		if dedupe && errors.Is(err, ErrIdempotencyConflict) {
+			existing, ok, lookupErr := uc.Events.ByIdempotencyKey(ctx, p.TenantID, p.ProjectID, key)
 			if lookupErr != nil {
 				return "", lookupErr
 			}
@@ -107,6 +122,27 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 		return "", err
 	}
 	return event.ID, nil
+}
+
+// submissionKey resolves the idempotency key for a request. A caller-supplied
+// occurrence id or idempotency key marks the submission as a retry (dedupe
+// true); with neither, the key is empty and Handle mints a fresh one.
+func submissionKey(req SubmitRequest) (domain.IdempotencyKey, bool, error) {
+	if req.OccurrenceID != "" {
+		occ, err := domain.ParseOccurrenceID(req.OccurrenceID)
+		if err != nil {
+			return "", false, err
+		}
+		return domain.OccurrenceKey(occ), true, nil
+	}
+	if req.IdempotencyKey != "" {
+		key, err := domain.ParseIdempotencyKey(req.IdempotencyKey)
+		if err != nil {
+			return "", false, err
+		}
+		return key, true, nil
+	}
+	return "", false, nil
 }
 
 func parseLinks(in []LinkInput) ([]domain.Link, error) {

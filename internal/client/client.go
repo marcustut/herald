@@ -34,6 +34,7 @@ type Event struct {
 	Agent          string
 	Host           string
 	Links          []Link
+	OccurrenceID   string
 	IdempotencyKey string
 }
 
@@ -63,6 +64,9 @@ func (c *Client) Submit(ctx context.Context, r Event) (string, error) {
 	}
 	if r.Project != "" {
 		body["project"] = r.Project
+	}
+	if r.OccurrenceID != "" {
+		body["occurrenceId"] = r.OccurrenceID
 	}
 	if r.Host != "" {
 		body["context"] = map[string]string{"host": r.Host}

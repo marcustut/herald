@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,6 +72,39 @@ func TestEventFlowEndToEnd(t *testing.T) {
 	}
 	if got := events.Deliveries(); len(got) != 1 {
 		t.Fatalf("replay re-fanned out: %d deliveries", len(got))
+	}
+}
+
+// Concurrent retries of one occurrence must converge on a single event.
+func TestConcurrentOccurrenceRetry(t *testing.T) {
+	ctx := context.Background()
+	events := memory.NewEvents()
+	submit := app.SubmitEvent{Events: events, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}}
+	principal := domain.Principal{TenantID: "ten_1", ProjectID: "axis"}
+	req := app.SubmitRequest{Status: "success", Title: "done", Agent: "a", OccurrenceID: "occ-1"}
+
+	const n = 8
+	var wg sync.WaitGroup
+	ids := make([]domain.EventID, n)
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ids[i], errs[i] = submit.Handle(ctx, principal, req)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: %v", i, err)
+		}
+		if ids[i] != ids[0] {
+			t.Fatalf("ids differ: %q vs %q", ids[i], ids[0])
+		}
+	}
+	if got := events.Deliveries(); len(got) != 1 {
+		t.Fatalf("deliveries = %d, want no re-fan-out", len(got))
 	}
 }
 

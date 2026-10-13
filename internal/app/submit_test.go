@@ -37,7 +37,7 @@ func TestSubmitHappyPath(t *testing.T) {
 	if id != "evt_1" {
 		t.Fatalf("id = %q", id)
 	}
-	rep, ok := events.byKey[eventKey{"ten_1", "run-1"}]
+	rep, ok := events.byKey[eventKey{"ten_1", "axis", "run-1"}]
 	if !ok {
 		t.Fatal("event not saved")
 	}
@@ -56,7 +56,7 @@ func TestSubmitRedactsBeforePersistence(t *testing.T) {
 	if _, err := uc.Handle(context.Background(), submitter, req); err != nil {
 		t.Fatal(err)
 	}
-	rep := events.byKey[eventKey{"ten_1", "run-1"}]
+	rep := events.byKey[eventKey{"ten_1", "axis", "run-1"}]
 	if strings.Contains(rep.Body, "hunter2") {
 		t.Fatalf("secret persisted: %q", rep.Body)
 	}
@@ -72,7 +72,7 @@ func TestSubmitWithLinks(t *testing.T) {
 	if _, err := uc.Handle(context.Background(), submitter, req); err != nil {
 		t.Fatal(err)
 	}
-	rep := events.byKey[eventKey{"ten_1", "run-1"}]
+	rep := events.byKey[eventKey{"ten_1", "axis", "run-1"}]
 	if len(rep.Links) != 1 || rep.Links[0].Label != "PR" {
 		t.Fatalf("links = %+v", rep.Links)
 	}
@@ -96,6 +96,73 @@ func TestSubmitIdempotentReplay(t *testing.T) {
 	}
 	if len(events.deliveries) != 1 {
 		t.Fatalf("deliveries = %d, want no re-fan-out", len(events.deliveries))
+	}
+}
+
+func TestSubmitIdenticalContentAreDistinctOccurrences(t *testing.T) {
+	uc, events, _ := newSubmit()
+	req := validSubmitRequest()
+	req.IdempotencyKey = ""
+	first, err := uc.Handle(context.Background(), submitter, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := uc.Handle(context.Background(), submitter, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("identical content collapsed to one event: %q", first)
+	}
+	if len(events.byKey) != 2 || len(events.deliveries) != 2 {
+		t.Fatalf("events=%d deliveries=%d, want 2 each", len(events.byKey), len(events.deliveries))
+	}
+}
+
+func TestSubmitOccurrenceRetry(t *testing.T) {
+	uc, events, _ := newSubmit()
+	req := validSubmitRequest()
+	req.IdempotencyKey = ""
+	req.OccurrenceID = "deploy-42"
+	first, err := uc.Handle(context.Background(), submitter, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Body = "retry with changed text"
+	second, err := uc.Handle(context.Background(), submitter, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("retry id = %q, want %q", second, first)
+	}
+	if len(events.byKey) != 1 || len(events.deliveries) != 1 {
+		t.Fatalf("events=%d deliveries=%d, want no re-fan-out", len(events.byKey), len(events.deliveries))
+	}
+	if _, ok := events.byKey[eventKey{"ten_1", "axis", "occ_deploy-42"}]; !ok {
+		t.Fatalf("occurrence key not stored: %+v", events.byKey)
+	}
+}
+
+func TestSubmitKeysAreProjectScoped(t *testing.T) {
+	uc, events, _ := newSubmit()
+	req := validSubmitRequest()
+	req.OccurrenceID = "shared-1"
+	axis := domain.Principal{TenantID: "ten_1", ProjectID: "axis"}
+	herald := domain.Principal{TenantID: "ten_1", ProjectID: "herald"}
+	first, err := uc.Handle(context.Background(), axis, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := uc.Handle(context.Background(), herald, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("the same key across two projects collapsed into one event")
+	}
+	if len(events.byKey) != 2 {
+		t.Fatalf("saved %d events, want 2", len(events.byKey))
 	}
 }
 
@@ -141,7 +208,8 @@ func TestSubmitValidationErrors(t *testing.T) {
 	}{
 		{"bad status", func(r *SubmitRequest) { r.Status = "done" }},
 		{"missing agent", func(r *SubmitRequest) { r.Agent = "" }},
-		{"missing key", func(r *SubmitRequest) { r.IdempotencyKey = "" }},
+		{"bad occurrence id", func(r *SubmitRequest) { r.OccurrenceID = "a/b" }},
+		{"bad idempotency key", func(r *SubmitRequest) { r.IdempotencyKey = "a b" }},
 		{"bad link", func(r *SubmitRequest) { r.Links = []LinkInput{{Label: "", URL: "https://x.test"}} }},
 		{"bad context", func(r *SubmitRequest) { r.Context = map[string]string{"agent": "spoof"} }},
 		{"long title", func(r *SubmitRequest) { r.Title = strings.Repeat("a", domain.MaxTitleLen+1) }},
@@ -197,7 +265,7 @@ type racingEvents struct {
 	lookupErr error
 }
 
-func (r *racingEvents) ByIdempotencyKey(context.Context, domain.TenantID, domain.IdempotencyKey) (domain.Event, bool, error) {
+func (r *racingEvents) ByIdempotencyKey(context.Context, domain.TenantID, domain.ProjectID, domain.IdempotencyKey) (domain.Event, bool, error) {
 	if !r.saved {
 		return domain.Event{}, false, nil
 	}

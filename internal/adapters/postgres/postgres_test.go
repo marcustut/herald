@@ -91,8 +91,18 @@ func TestIntegration(t *testing.T) {
 	if err != nil || !ok || stored.Links[0].URL != "https://x.test/1" || stored.Context.Host() != "h1" {
 		t.Fatalf("stored %+v ok %v err %v", stored, ok, err)
 	}
-	if _, ok, _ := events.ByIdempotencyKey(ctx, "ten_1", "run-1"); !ok {
+	if _, ok, _ := events.ByIdempotencyKey(ctx, "ten_1", "axis", "run-1"); !ok {
 		t.Fatal("idempotency lookup failed")
+	}
+	// Keys are scoped per project: another project may reuse the same key.
+	other := rep
+	other.ID = "evt_2"
+	other.ProjectID = "herald"
+	if err := events.Save(ctx, other, nil); err != nil {
+		t.Fatalf("cross-project key should not conflict: %v", err)
+	}
+	if _, ok, _ := events.ByIdempotencyKey(ctx, "ten_1", "herald", "run-1"); !ok {
+		t.Fatal("cross-project lookup failed")
 	}
 
 	claimed, err := events.Claim(ctx, time.Now().UTC(), time.Minute, 10)
@@ -180,6 +190,12 @@ func TestIntegrationLegacyRename(t *testing.T) {
 	var eventID string
 	if err := pool.QueryRow(ctx, `SELECT event_id FROM deliveries WHERE id='del_1'`).Scan(&eventID); err != nil || eventID != "rep_1" {
 		t.Fatalf("event_id=%q err=%v", eventID, err)
+	}
+	// The old per-tenant key constraint is replaced by a project-scoped one, so
+	// another project can now reuse the migrated key.
+	if _, err := pool.Exec(ctx, `INSERT INTO events (id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at)
+		VALUES ('rep_2','ten_1','herald','herdr','success','t','b','[]','{}','k-1',$1)`, now); err != nil {
+		t.Fatalf("cross-project key after migrate: %v", err)
 	}
 	// Migrate is idempotent.
 	if err := Migrate(ctx, pool); err != nil {

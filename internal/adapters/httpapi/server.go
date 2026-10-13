@@ -49,6 +49,7 @@ type submitPayload struct {
 	Links          []linkDTO         `json:"links"`
 	Context        map[string]string `json:"context"`
 	Agent          string            `json:"agent"`
+	OccurrenceID   string            `json:"occurrenceId"`
 	IdempotencyKey string            `json:"idempotencyKey"`
 }
 
@@ -148,6 +149,7 @@ func (p submitPayload) request() app.SubmitRequest {
 		Links:          links,
 		Context:        p.Context,
 		Agent:          p.Agent,
+		OccurrenceID:   p.OccurrenceID,
 		IdempotencyKey: p.IdempotencyKey,
 	}
 }
@@ -180,6 +182,7 @@ func isValidation(err error) bool {
 		domain.ErrInvalidAgent,
 		domain.ErrInvalidContext,
 		domain.ErrInvalidIdempotencyKey,
+		domain.ErrInvalidOccurrenceID,
 		domain.ErrTitleRequired,
 		domain.ErrTitleTooLong,
 		domain.ErrBodyTooLong,
@@ -208,6 +211,8 @@ func fieldFor(err error) string {
 		return "context"
 	case errors.Is(err, domain.ErrInvalidIdempotencyKey):
 		return "idempotencyKey"
+	case errors.Is(err, domain.ErrInvalidOccurrenceID):
+		return "occurrenceId"
 	default:
 		return ""
 	}
