@@ -41,7 +41,7 @@
 
       <div class="install">
         <p class="install-label">Install the CLI</p>
-        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/marcustut/herald/main/install.sh | sh</code></span><button class="copy" type="button" data-copy="install-cmd">copy</button></p>
+        <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/marcustut/herald/main/install.sh | sh</code></span><button class="copy" type="button" data-copy="install-cmd" aria-label="Copy install command" title="Copy"><svg class="i-copy" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="i-check" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
         <p class="install-next"><a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Then follow the quickstart →</a></p>
       </div>
 
@@ -167,9 +167,9 @@ Subject: [herald] success · axis · herald-cli@build-01 — deploy finished</co
       var el = document.getElementById(btn.getAttribute("data-copy"));
       var text = el ? el.textContent : "";
       var done = function () {
-        btn.textContent = "copied";
         btn.classList.add("is-done");
-        setTimeout(function () { btn.textContent = "copy"; btn.classList.remove("is-done"); }, 1500);
+        btn.setAttribute("aria-label", "Copied");
+        setTimeout(function () { btn.classList.remove("is-done"); btn.setAttribute("aria-label", "Copy install command"); }, 1500);
       };
       var fallback = function () {
         var t = document.createElement("textarea");
