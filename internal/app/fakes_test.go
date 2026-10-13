@@ -160,6 +160,7 @@ func (s *fakeDeliveries) Claim(_ context.Context, now time.Time, lease time.Dura
 	if s.claimErr != nil {
 		return nil, s.claimErr
 	}
+	s.reclaimExpired(now)
 	var claimed []domain.Delivery
 	for i := range s.rows {
 		if limit > 0 && len(claimed) >= limit {
@@ -188,6 +189,78 @@ func (s *fakeDeliveries) Update(_ context.Context, del domain.Delivery) error {
 		}
 	}
 	return ErrDeliveryNotFound
+}
+
+func (s *fakeDeliveries) DeliveryByID(_ context.Context, id domain.DeliveryID) (domain.Delivery, bool, error) {
+	for _, d := range s.rows {
+		if d.ID == id {
+			return d, true, nil
+		}
+	}
+	return domain.Delivery{}, false, nil
+}
+
+func (s *fakeDeliveries) ListDeliveries(_ context.Context, f DeliveryFilter, limit int) ([]domain.Delivery, error) {
+	var out []domain.Delivery
+	for _, d := range s.rows {
+		if f.ID != "" && d.ID != f.ID {
+			continue
+		}
+		if f.State != "" && d.State != f.State {
+			continue
+		}
+		if f.EventID != "" && d.EventID != f.EventID {
+			continue
+		}
+		if f.SinkID != "" && d.SinkID != f.SinkID {
+			continue
+		}
+		out = append(out, d)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *fakeDeliveries) Requeue(_ context.Context, f DeliveryFilter, now time.Time) (int, error) {
+	n := 0
+	for i := range s.rows {
+		d := &s.rows[i]
+		if f.ID != "" && d.ID != f.ID {
+			continue
+		}
+		if f.State != "" && d.State != f.State {
+			continue
+		}
+		if f.EventID != "" && d.EventID != f.EventID {
+			continue
+		}
+		if f.SinkID != "" && d.SinkID != f.SinkID {
+			continue
+		}
+		if changed, err := d.Requeue(now); err != nil {
+			return n, err
+		} else if changed {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (s *fakeDeliveries) ReclaimExpired(_ context.Context, now time.Time) (int, error) {
+	return s.reclaimExpired(now), nil
+}
+
+func (s *fakeDeliveries) reclaimExpired(now time.Time) int {
+	n := 0
+	for i := range s.rows {
+		if s.rows[i].LeaseExpired(now) {
+			_ = s.rows[i].Reclaim(now)
+			n++
+		}
+	}
+	return n
 }
 
 func (s *fakeDeliveries) row(id domain.DeliveryID) domain.Delivery {

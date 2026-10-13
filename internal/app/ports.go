@@ -85,12 +85,41 @@ type EventStore interface {
 	ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, key domain.IdempotencyKey) (domain.Event, bool, error)
 }
 
-// DeliveryStore is the queue backend the dispatcher drains.
+// DeliveryFilter narrows a delivery listing or a bulk requeue. Every zero field
+// matches any value, so the zero filter matches every row.
+type DeliveryFilter struct {
+	ID      domain.DeliveryID
+	State   domain.DeliveryState
+	EventID domain.EventID
+	SinkID  domain.SinkID
+}
+
+// DeliveryStore is the queue backend the dispatcher drains and the operator
+// tooling inspects.
 type DeliveryStore interface {
-	// Claim atomically leases up to limit due deliveries, moving each to
-	// inflight and counting an attempt.
+	// Claim recovers expired leases and then atomically leases up to limit due
+	// deliveries, moving each to inflight and counting an attempt.
 	Claim(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]domain.Delivery, error)
 	Update(ctx context.Context, d domain.Delivery) error
+
+	// DeliveryByID returns a single delivery row.
+	DeliveryByID(ctx context.Context, id domain.DeliveryID) (domain.Delivery, bool, error)
+
+	// ListDeliveries returns the deliveries matching filter, newest first. A
+	// limit <= 0 returns every match.
+	ListDeliveries(ctx context.Context, filter DeliveryFilter, limit int) ([]domain.Delivery, error)
+
+	// Requeue re-drives the pending or dead deliveries matching filter so the
+	// dispatcher will attempt them again, returning how many rows changed. A
+	// delivered row is never selected, so a redrive cannot duplicate a sink
+	// delivery that already succeeded; an inflight row whose lease is still held
+	// is left to its worker.
+	Requeue(ctx context.Context, filter DeliveryFilter, now time.Time) (int, error)
+
+	// ReclaimExpired returns inflight rows whose lease expired to pending so a
+	// crashed worker's deliveries are retried, returning how many rows changed.
+	// It does not consume an attempt.
+	ReclaimExpired(ctx context.Context, now time.Time) (int, error)
 }
 
 // Sink pushes a event to one external destination, rendering whatever payload
