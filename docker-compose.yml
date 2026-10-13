@@ -1,0 +1,80 @@
+# Herald self-host: API + queue dispatcher + PostgreSQL.
+#
+# One-command start (after copying .env.example -> .env and
+# gateway.docker.example.toml -> gateway.toml and filling both in):
+#
+#   docker compose up -d
+#
+# Secrets come only from the environment/.env file; nothing secret is baked into
+# the image or committed. See docs/self-hosting-docker.md.
+
+name: herald
+
+# Shared between the API and the dispatcher: same database, same SMTP
+# credentials, same gateway.toml. The dispatcher is a distinct process by
+# design so it can be scaled or restarted without touching the API.
+x-herald-env: &herald-env
+  HERALD_DATABASE_URL: ${HERALD_DATABASE_URL:?set HERALD_DATABASE_URL in .env}
+  HERALD_SMTP_USERNAME: ${HERALD_SMTP_USERNAME:-}
+  HERALD_SMTP_PASSWORD: ${HERALD_SMTP_PASSWORD:-}
+
+x-herald-config: &herald-config
+  - ./gateway.toml:/etc/herald/gateway.toml:ro
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${HERALD_POSTGRES_USER:-herald}
+      POSTGRES_PASSWORD: ${HERALD_POSTGRES_PASSWORD:?set HERALD_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${HERALD_POSTGRES_DB:-herald}
+    volumes:
+      # postgres:18 defaults PGDATA to /var/lib/postgresql/18/docker, so the
+      # persistent volume is mounted at /var/lib/postgresql (as the image docs
+      # recommend for 18+), not the older /var/lib/postgresql/data.
+      - herald-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  herald:
+    build: .
+    image: herald:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *herald-env
+    volumes: *herald-config
+    ports:
+      - "${HERALD_PORT:-8787}:8787"
+    # Lets gateway.toml reach an SMTP server running on the host via
+    # host.docker.internal on Linux as well as Docker Desktop.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["serve", "--config", "/etc/herald/gateway.toml"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  herald-dispatcher:
+    build: .
+    image: herald:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *herald-env
+    volumes: *herald-config
+    command: ["dispatch", "--config", "/etc/herald/gateway.toml", "--workers", "${HERALD_DISPATCH_WORKERS:-2}"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  herald-db:
