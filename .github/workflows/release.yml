@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/marcustut/herald/internal/version.Version=${GITHUB_REF_NAME}" \
+            -o "dist/herald_${GOOS}_${GOARCH}" ./cmd/herald
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herald_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/herald_${{ matrix.goos }}_${{ matrix.goarch }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums (SHA256)
+        working-directory: dist
+        run: sha256sum herald_* > checksums.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --generate-notes --verify-tag

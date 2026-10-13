@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/marcustut/herald/internal/version"
 )
 
 func run(t *testing.T, stdin string, args ...string) (int, string, string) {
@@ -24,11 +26,39 @@ func TestUsageAndDispatch(t *testing.T) {
 	if code, out, _ := run(t, "", "help"); code != 0 || !strings.Contains(out, "Usage:") {
 		t.Fatalf("help: code=%d out=%q", code, out)
 	}
-	if code, out, _ := run(t, "", "version"); code != 0 || strings.TrimSpace(out) != version {
+	if code, out, _ := run(t, "", "version"); code != 0 || strings.TrimSpace(out) != version.String() {
 		t.Fatalf("version: code=%d out=%q", code, out)
 	}
 	if code, _, _ := run(t, "", "bogus"); code == 0 {
 		t.Fatal("unknown command should fail")
+	}
+}
+
+// TestVersionCommandReflectsBuild checks the CLI prints the injected build
+// version and stays usable when built without -ldflags (dev/empty).
+func TestVersionCommandReflectsBuild(t *testing.T) {
+	original := version.Version
+	t.Cleanup(func() { version.Version = original })
+
+	for _, tc := range []struct {
+		name  string
+		build string
+		want  string
+	}{
+		{"injected release tag", "v1.2.3", "v1.2.3"},
+		{"dev build", "dev", "dev"},
+		{"empty build", "", "dev"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			version.Version = tc.build
+			code, out, errOut := run(t, "", "version")
+			if code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, errOut)
+			}
+			if got := strings.TrimSpace(out); got != tc.want {
+				t.Fatalf("version output = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

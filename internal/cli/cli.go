@@ -11,9 +11,8 @@ import (
 
 	"github.com/marcustut/herald/internal/client"
 	"github.com/marcustut/herald/internal/config"
+	"github.com/marcustut/herald/internal/version"
 )
-
-const version = "0.1.0"
 
 const usage = `herald — agent event gateway
 
@@ -60,7 +59,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case "skill":
 		return runSkill(args[1:], stdout, stderr)
 	case "version", "-v", "--version":
-		fmt.Fprintln(stdout, version)
+		fmt.Fprintln(stdout, version.String())
 		return 0
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
