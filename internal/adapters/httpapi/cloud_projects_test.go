@@ -348,13 +348,25 @@ func TestCloudScopedTokenCannotEscalate(t *testing.T) {
 	}
 }
 
-func TestCloudProjectsPageRequiresSession(t *testing.T) {
+func TestCloudProjectsPageSignInShell(t *testing.T) {
 	f := newCloudFixture(t, nil)
 
+	// Without a session the page still renders (so the sign-in form is
+	// reachable) as a signed-out shell, not a 401.
 	resp := f.do(t, http.MethodGet, "/dashboard", "")
+	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("page without session = %d, want 401", resp.StatusCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("page without session = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("content type = %q", ct)
+	}
+	if !strings.Contains(string(body), "signin-form") {
+		t.Fatal("signed-out page is missing the sign-in form")
 	}
 
 	f.signIn(t, "alice@example.com")
@@ -366,7 +378,7 @@ func TestCloudProjectsPageRequiresSession(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 		t.Fatalf("content type = %q", ct)
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
