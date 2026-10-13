@@ -153,6 +153,15 @@ type DeliveryStore interface {
 	// crashed worker's deliveries are retried, returning how many rows changed.
 	// It does not consume an attempt.
 	ReclaimExpired(ctx context.Context, now time.Time) (int, error)
+
+	// Outstanding returns how many deliveries for (tenant, project) are still
+	// pending or inflight — the project's live backlog. It backs submit
+	// backpressure and is scoped by tenant and project.
+	Outstanding(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) (int, error)
+
+	// Backlog returns the total pending and inflight deliveries across every
+	// tenant, sampled by the dispatcher for queue-congestion metrics.
+	Backlog(ctx context.Context) (int, error)
 }
 
 // Sink pushes a event to one external destination, rendering whatever payload
@@ -163,9 +172,13 @@ type Sink interface {
 }
 
 // SinkError classifies a delivery failure. A permanent failure is not retried.
+// A bounce is a permanent failure that a sink recognised as a hard rejection of
+// the recipient (an SMTP 5xx, an invalid mailbox); it is dead-lettered at once
+// and counted separately from other dead letters.
 type SinkError struct {
 	Err       error
 	Permanent bool
+	Bounce    bool
 }
 
 func (e *SinkError) Error() string { return e.Err.Error() }
@@ -174,11 +187,21 @@ func (e *SinkError) Unwrap() error { return e.Err }
 // Permanent wraps err as non-retryable.
 func Permanent(err error) error { return &SinkError{Err: err, Permanent: true} }
 
+// Bounce wraps err as a permanent, non-retryable recipient rejection.
+func Bounce(err error) error { return &SinkError{Err: err, Permanent: true, Bounce: true} }
+
 // Retryable wraps err as retryable.
 func Retryable(err error) error { return &SinkError{Err: err} }
 
-// IsPermanent events whether err was classified permanent.
+// IsPermanent events whether err was classified permanent. A bounce is
+// permanent, so this is true for a bounce too.
 func IsPermanent(err error) bool {
 	var se *SinkError
 	return errors.As(err, &se) && se.Permanent
+}
+
+// IsBounce reports whether err was classified as a hard recipient rejection.
+func IsBounce(err error) bool {
+	var se *SinkError
+	return errors.As(err, &se) && se.Bounce
 }

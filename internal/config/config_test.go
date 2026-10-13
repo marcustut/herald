@@ -130,6 +130,45 @@ func TestLimitsDefaults(t *testing.T) {
 	if got.Requests != want.requests || got.Window != want.window || got.Daily != want.daily || got.Monthly != want.monthly {
 		t.Fatalf("effective limits = %+v", got)
 	}
+	// Backpressure is off unless configured, so self-host is unchanged.
+	if got.Queued != 0 {
+		t.Fatalf("queued default = %d, want 0", got.Queued)
+	}
+}
+
+func TestLimitsQueuedBackpressure(t *testing.T) {
+	body := `
+[server]
+addr = "127.0.0.1:8787"
+tenant = "owner"
+
+[limits]
+queued = 100
+
+[projects.axis]
+sinks = ["email"]
+
+[projects.axis.limits]
+queued = 5
+
+[projects.finance]
+sinks = ["email"]
+
+[sinks.email]
+kind = "email"
+recipient = "herald@example.com"
+`
+	g, err := LoadGateway(writeTemp(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := g.EffectiveLimits()
+	if got := limits[domain.ProjectID("axis")].Queued; got != 5 {
+		t.Fatalf("axis queued = %d, want 5", got)
+	}
+	if got := limits[domain.ProjectID("finance")].Queued; got != 100 {
+		t.Fatalf("finance queued = %d, want 100", got)
+	}
 }
 
 func TestLimitsGlobalAndProjectOverride(t *testing.T) {
@@ -182,6 +221,7 @@ func TestLimitsInvalid(t *testing.T) {
 		{"bad window", "[limits]\nwindow=\"nope\""},
 		{"zero window", "[limits]\nwindow=\"0s\""},
 		{"negative requests", "[limits]\nrequests=-1"},
+		{"negative queued", "[limits]\nqueued=-1"},
 		{"project bad window", "[projects.a.limits]\nwindow=\"x\""},
 	}
 	for _, tt := range tests {

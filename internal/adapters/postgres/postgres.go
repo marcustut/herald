@@ -349,6 +349,32 @@ func (s *Events) ReclaimExpired(ctx context.Context, now time.Time) (int, error)
 	return int(tag.RowsAffected()), nil
 }
 
+// outstandingQuery joins events for the (tenant, project) scope; the unique
+// index on events (tenant_id, project_id, idempotency_key) is a usable prefix,
+// so the count is indexed rather than a full scan.
+const outstandingQuery = `
+SELECT count(*) FROM deliveries d
+JOIN events e ON e.id = d.event_id
+WHERE e.tenant_id = $1 AND e.project_id = $2
+  AND d.state IN ('pending', 'inflight')`
+
+func (s *Events) Outstanding(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) (int, error) {
+	var n int
+	if err := s.pool.QueryRow(ctx, outstandingQuery, string(tenant), string(project)).Scan(&n); err != nil {
+		return 0, fmt.Errorf("outstanding deliveries: %w", err)
+	}
+	return n, nil
+}
+
+func (s *Events) Backlog(ctx context.Context) (int, error) {
+	var n int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM deliveries WHERE state IN ('pending', 'inflight')`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("delivery backlog: %w", err)
+	}
+	return n, nil
+}
+
 const selectDelivery = `SELECT id, event_id, sink_id, state, attempts, next_attempt_at, lease_until, last_error, created_at, updated_at FROM deliveries`
 
 func (s *Events) DeliveryByID(ctx context.Context, id domain.DeliveryID) (domain.Delivery, bool, error) {

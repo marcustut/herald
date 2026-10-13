@@ -164,7 +164,12 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		writeRateLimit(w, decision)
 		if !decision.Allowed {
+			s.observer().ObserveSubmitRejection(decision.Scope)
 			w.Header().Set("Retry-After", seconds(decision.RetryAfter))
+			if decision.Scope == app.ScopeQueue {
+				writeError(w, http.StatusServiceUnavailable, "queue_full", "the project delivery queue is congested; retry later", "")
+				return
+			}
 			writeError(w, http.StatusTooManyRequests, "rate_limited", "submit limit exceeded", "")
 			return
 		}

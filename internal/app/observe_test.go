@@ -17,13 +17,17 @@ type capturedDelivery struct {
 type captureObserver struct {
 	deliveries []capturedDelivery
 	polls      int
+	rejects    []string
+	depths     []int
 }
 
 func (o *captureObserver) ObserveHTTP(string, string, int, time.Duration) {}
 func (o *captureObserver) ObserveDelivery(sink domain.SinkID, outcome DeliveryOutcome, _ time.Duration) {
 	o.deliveries = append(o.deliveries, capturedDelivery{sink, outcome})
 }
-func (o *captureObserver) ObserveDispatchPoll(time.Time) { o.polls++ }
+func (o *captureObserver) ObserveDispatchPoll(time.Time)       { o.polls++ }
+func (o *captureObserver) ObserveSubmitRejection(scope string) { o.rejects = append(o.rejects, scope) }
+func (o *captureObserver) ObserveQueueDepth(depth int)         { o.depths = append(o.depths, depth) }
 
 type countingHeartbeat struct{ beats int }
 
@@ -61,6 +65,45 @@ func TestObserverRecordsOutcomes(t *testing.T) {
 		if want[got.sink] != got.outcome {
 			t.Fatalf("sink %q outcome = %q, want %q", got.sink, got.outcome, want[got.sink])
 		}
+	}
+}
+
+// A hard recipient rejection dead-letters at once and is counted as a bounce,
+// not a generic dead letter.
+func TestObserverCountsBounce(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
+	obs := &captureObserver{}
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{
+		"email": &fakeSink{id: "email", err: Bounce(errors.New("550 no such user"))},
+	})
+	uc.Observer = obs
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := deliveries.row("del_1").State; got != domain.DeliveryDead {
+		t.Fatalf("state = %q, want dead", got)
+	}
+	if len(obs.deliveries) != 1 || obs.deliveries[0].outcome != OutcomeBounce {
+		t.Fatalf("observed = %+v, want one bounce", obs.deliveries)
+	}
+}
+
+// Run samples the queue backlog for congestion metrics on each successful poll.
+func TestRunObservesBacklog(t *testing.T) {
+	deliveries := newFakeDeliveries()
+	deliveries.backlog = 7
+	obs := &captureObserver{}
+	uc := newDispatcher(deliveries, newFakeEvents(), nil)
+	uc.Observer = obs
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = uc.Run(ctx, time.Hour)
+	if len(obs.depths) != 1 || obs.depths[0] != 7 {
+		t.Fatalf("depths = %v, want [7]", obs.depths)
 	}
 }
 

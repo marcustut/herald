@@ -131,9 +131,21 @@ func (e *Email) Deliver(_ context.Context, r domain.Event) error {
 		auth = smtp.PlainAuth("", e.cfg.Username, e.cfg.Password, hostOf(e.cfg.Addr))
 	}
 	if err := e.transport.Send(e.cfg.Addr, auth, e.cfg.From, []string{e.cfg.Recipient}, msg); err != nil {
-		return fmt.Errorf("send mail: %w", err)
+		return fmt.Errorf("send mail: %w", classifySMTP(err))
 	}
 	return nil
+}
+
+// classifySMTP marks a permanent SMTP 5xx reply as a bounce: the recipient was
+// hard-rejected (unknown mailbox, blocked sender), so retrying the same address
+// is pointless. Every other failure — a 4xx, a network error, a TLS refusal —
+// stays retryable.
+func classifySMTP(err error) error {
+	var protoErr *textproto.Error
+	if errors.As(err, &protoErr) && protoErr.Code >= 500 {
+		return app.Bounce(err)
+	}
+	return err
 }
 
 func (e *Email) buildMessage(r domain.Event) ([]byte, error) {

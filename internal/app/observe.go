@@ -14,6 +14,9 @@ const (
 	OutcomeDelivered DeliveryOutcome = "delivered"
 	OutcomeRetry     DeliveryOutcome = "retry"
 	OutcomeDead      DeliveryOutcome = "dead"
+	// OutcomeBounce is a permanent recipient rejection (a hard SMTP bounce)
+	// dead-lettered immediately instead of retried.
+	OutcomeBounce DeliveryOutcome = "bounce"
 )
 
 // Observer receives operational measurements for metrics. It is a port so the
@@ -34,6 +37,13 @@ type Observer interface {
 	// ObserveDispatchPoll records that the dispatcher completed a poll, so
 	// alerting can detect a stalled or dead dispatcher.
 	ObserveDispatchPoll(now time.Time)
+	// ObserveSubmitRejection records one submit rejected by a limit, by scope
+	// (a bounded app.Scope* value), so send-rate spikes and abuse are visible.
+	ObserveSubmitRejection(scope string)
+	// ObserveQueueDepth records the total outstanding (pending + inflight)
+	// deliveries across all tenants, sampled by the dispatcher, for queue
+	// congestion alerting.
+	ObserveQueueDepth(depth int)
 }
 
 // NoopObserver discards every measurement. It is the zero value used when no
@@ -43,6 +53,8 @@ type NoopObserver struct{}
 func (NoopObserver) ObserveHTTP(string, string, int, time.Duration)                {}
 func (NoopObserver) ObserveDelivery(domain.SinkID, DeliveryOutcome, time.Duration) {}
 func (NoopObserver) ObserveDispatchPoll(time.Time)                                 {}
+func (NoopObserver) ObserveSubmitRejection(string)                                 {}
+func (NoopObserver) ObserveQueueDepth(int)                                         {}
 
 var _ Observer = NoopObserver{}
 

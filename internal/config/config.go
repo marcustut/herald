@@ -54,12 +54,14 @@ const (
 
 // Limits is one project's submit budget. Every field is optional: an unset
 // field inherits the global [limits] defaults. Window is a Go duration string
-// ("30s", "1m", "1h").
+// ("30s", "1m", "1h"). Queued caps outstanding deliveries (backpressure) and is
+// off by default so self-host behaviour is unchanged until an operator sets it.
 type Limits struct {
 	Requests int    `toml:"requests"`
 	Window   string `toml:"window"`
 	Daily    int    `toml:"daily"`
 	Monthly  int    `toml:"monthly"`
+	Queued   int    `toml:"queued"`
 }
 
 type Server struct {
@@ -131,7 +133,7 @@ func (l Limits) withDefaults() Limits {
 }
 
 func (l Limits) validate(scope string) error {
-	if l.Requests < 0 || l.Daily < 0 || l.Monthly < 0 {
+	if l.Requests < 0 || l.Daily < 0 || l.Monthly < 0 || l.Queued < 0 {
 		return fmt.Errorf("%s: limits must not be negative", scope)
 	}
 	if l.Window != "" {
@@ -161,6 +163,7 @@ func (g Gateway) EffectiveLimits() map[domain.ProjectID]app.Limits {
 			Window:   d,
 			Daily:    l.Daily,
 			Monthly:  l.Monthly,
+			Queued:   l.Queued,
 		}
 	}
 	return out
@@ -179,6 +182,9 @@ func (l Limits) merge(over Limits) Limits {
 	}
 	if over.Monthly != 0 {
 		l.Monthly = over.Monthly
+	}
+	if over.Queued != 0 {
+		l.Queued = over.Queued
 	}
 	return l
 }

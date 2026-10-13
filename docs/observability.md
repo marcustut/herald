@@ -47,9 +47,11 @@ set. Bearer tokens, project ids, and event bodies are **never** used as labels.
 | `herald_http_requests_total` | counter | `route`, `method`, `status` | HTTP requests accepted, by route, method, and response status. |
 | `herald_http_request_duration_seconds` | histogram | `route`, `method` | HTTP request latency (default Prometheus buckets). |
 | `herald_delivery_attempts_total` | counter | `sink` | Delivery attempts (one per `sink.Deliver` call). |
-| `herald_delivery_outcomes_total` | counter | `sink`, `outcome` | Attempt result: `delivered`, `retry`, or `dead`. |
+| `herald_delivery_outcomes_total` | counter | `sink`, `outcome` | Attempt result: `delivered`, `retry`, `dead`, or `bounce` (a hard recipient rejection). |
 | `herald_delivery_duration_seconds` | histogram | `sink`, `outcome` | Delivery attempt latency. |
 | `herald_dispatcher_last_poll_timestamp_seconds` | gauge | — | Unix time of the dispatcher's last successful queue poll. |
+| `herald_submit_rejections_total` | counter | `scope` | Submits rejected by a limit, by scope (`requests`, `daily`, `monthly`, `queue`); a rising rate is a send-rate spike or abuse. |
+| `herald_delivery_backlog` | gauge | — | Pending and inflight deliveries across all tenants, sampled by the dispatcher on each successful poll. |
 
 `route` is the matched `http.ServeMux` pattern with the method stripped (for
 example `/v1/events`); unmatched requests become `other`. Unknown HTTP methods
@@ -93,6 +95,12 @@ sum by (sink) (rate(herald_delivery_outcomes_total{outcome="retry"}[5m]))
 
 # Is the dispatcher alive?
 time() - herald_dispatcher_last_poll_timestamp_seconds
+
+# Submit rejections by scope (throttling, or an abuse attempt).
+sum by (scope) (rate(herald_submit_rejections_total[5m]))
+
+# Queue congestion: pending + inflight sampled by the dispatcher.
+herald_delivery_backlog
 ```
 
 ## Queue queries (source of truth)
@@ -176,7 +184,35 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Herald returned 5xx responses"
+
+      - alert: HeraldEmailBounces
+        expr: increase(herald_delivery_outcomes_total{outcome="bounce"}[15m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Herald dead-lettered a bounced email on {{ $labels.sink }}"
+
+      - alert: HeraldSubmitRejectionsSpiking
+        expr: sum by (scope) (rate(herald_submit_rejections_total[5m])) > 10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Herald is rejecting submits ({{ $labels.scope }}); a client is being throttled"
+
+      - alert: HeraldQueueCongested
+        expr: herald_delivery_backlog > 1000
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Herald delivery backlog is large; the dispatcher may be falling behind"
 ```
+
+Bounce/complaint coverage is split by what the delivery path can observe
+synchronously. A **hard SMTP bounce** (a 5xx reply) is classified by the email
+sink, dead-lettered at once, and counted as `outcome="bounce"`. **Asynchronous
+complaints** (feedback-loop reports) and ESP-side bounce webhooks arrive out of
+band and are not ingested yet; that depends on managed email (#32) and is
+tracked as remaining work on #35.
 
 Alerts that need the durable queue (SQL, e.g. via a metrics exporter or a cron
 check). Use these thresholds as a starting point:
