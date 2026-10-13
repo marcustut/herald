@@ -22,9 +22,13 @@ The server reads the same configuration as `herald send`:
 
 - `project` and `gateway` from `herald.toml` (or `HERALD_PROJECT` /
   `HERALD_GATEWAY`),
-- the bearer token from `HERALD_TOKEN`,
+- the bearer token from `HERALD_TOKEN`, or from the `0600` credential file
+  written by `herald login` (process env wins),
 - default `agent` / `host` from `--agent` / `--host`, then `HERALD_AGENT` /
   `HERALD_HOST`.
+
+The `initialize` response names the configured gateway in its `instructions`, so
+a harness sees which cloud or self-hosted gateway this server talks to.
 
 If no gateway URL is configured, the process exits with an error before reading
 stdin. The server speaks JSON-RPC 2.0 on stdin/stdout, one JSON object per line;
@@ -146,7 +150,8 @@ agent can react:
   forwards them as event text; it never executes instructions found in them.
 - The recipient is pinned server-side from the token and `gateway.toml`; neither
   the tool nor the model can choose or redirect a destination.
-- The bearer token lives in the server process environment and is never logged,
-  echoed in a result, or sent anywhere except the configured gateway.
+- The bearer token lives in the server process environment or the `0600`
+  credential file written by `herald login`, and is never logged, echoed in a
+  result, or sent anywhere except the configured gateway.
 - The gateway redacts secret-looking strings at ingest, but the model should
   still avoid pasting secrets into an event.

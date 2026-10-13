@@ -24,6 +24,7 @@ func runMCP(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	}
 	server := &mcp.Server{
 		Project: project,
+		Gateway: cl.Gateway,
 		Agent:   firstNonEmpty(*agent, defaultAgent),
 		Host:    firstNonEmpty(*host, defaultHost),
 		Client:  &cl,

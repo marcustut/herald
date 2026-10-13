@@ -95,6 +95,9 @@ func printInitGuidance(w io.Writer, project string) {
 
        herald send --status success --title "hello from herald"
 
+On Herald Cloud, skip steps 1-2: run "herald login --gateway <url> --email
+you@example.com" to sign in and store a project token for you.
+
 Install the agent skill so an agent can notify you when you ask it to:
 
     herald skill > ~/.claude/skills/herald/SKILL.md

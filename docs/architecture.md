@@ -86,8 +86,9 @@ cmd/herald ──► internal/cli ──► internal/app ──► internal/doma
 | `internal/adapters/hash` | SHA-256 hashing of credentials at rest. |
 | `internal/adapters/secret` | High-entropy token-secret generation. |
 | `internal/adapters/id` | ID generation. |
-| `internal/cli` | Command dispatch: `serve`, `dispatch`, `send`, `token`, `mcp`, `skill`. |
+| `internal/cli` | Command dispatch: `serve`, `dispatch`, `send`, `token`, `login`, `mcp`, `skill`. |
 | `internal/client` | HTTP client used by `send` and the MCP server. |
+| `internal/credentials` | Per-user `0600` credential file holding the bearer token written by `herald login`. |
 | `internal/mcp` | stdio MCP server exposing the `send_event` tool. |
 | `internal/skill` | The agent `SKILL.md` that teaches a harness when to notify. |
 | `internal/render` | Email templates (HTML + text). |

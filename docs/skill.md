@@ -59,7 +59,8 @@ The skill runs `herald send`, so the project needs the same configuration as the
   project = "axis"
   gateway = "https://herald.example.com"
   ```
-- `HERALD_TOKEN` in the environment (never committed). Optionally
+- The bearer token from `HERALD_TOKEN` in the environment, or from the `0600`
+  credential file written by `herald login` (never committed). Optionally
   `HERALD_AGENT` and `HERALD_HOST` identify the agent and the machine.
 - `herald` on the agent's `PATH`, or referenced by absolute path.
 
@@ -67,6 +68,17 @@ The skill runs `herald send`, so the project needs the same configuration as the
 export HERALD_TOKEN="herald_axis_<secret>"
 export HERALD_AGENT="opencode"
 ```
+
+Or let `herald login` store the token once, and skip the export:
+
+```sh
+herald login --gateway https://cloud.example.com --project axis --email you@example.com
+herald skill > ~/.claude/skills/herald/SKILL.md
+```
+
+`herald skill` appends the configured gateway and project to the printed skill,
+so the installed copy points at this installation's cloud or self-hosted
+gateway.
 
 ## What the agent runs
 

@@ -7,6 +7,7 @@ events (`send`), manages credentials (`token`), inspects the delivery queue
 - [Build and install](#build-and-install)
 - [Configuration](#configuration)
 - [Commands](#commands)
+  - [`herald login`](#herald-login)
   - [`herald send`](#herald-send)
   - [`herald token`](#herald-token)
   - [`herald serve`](#herald-serve)
@@ -48,6 +49,7 @@ gateway = "https://herald.example.com"
 | `HERALD_TOKEN` | `send`, `mcp` | Bearer token. **Never commit it.** |
 | `HERALD_GATEWAY` | `send`, `mcp` | Gateway origin; overrides `herald.toml`. |
 | `HERALD_PROJECT` | `send`, `mcp` | Project slug; overrides `herald.toml`. |
+| `HERALD_CONFIG_DIR` | `login`, `send`, `mcp` | Directory holding the credential file (default `$XDG_CONFIG_HOME/herald`). |
 | `HERALD_AGENT` | `send`, `mcp` | Default `--agent`. |
 | `HERALD_HOST` | `send`, `mcp` | Default `--host` (sent as `context.host`). |
 | `HERALD_DATABASE_URL` | `serve`, `dispatch`, `token`, `delivery` | PostgreSQL DSN. |
@@ -55,15 +57,89 @@ gateway = "https://herald.example.com"
 | `HERALD_SMTP_USERNAME` / `HERALD_SMTP_PASSWORD` | `serve`, `dispatch` | Email sink credentials. |
 
 Precedence for `send`/`mcp`: `herald.toml` supplies `project` and `gateway`;
-`HERALD_GATEWAY` and `HERALD_PROJECT` override them. The token comes only from
-`HERALD_TOKEN`. If the gateway URL is unset, the command exits with an error
-before any network call. `--config` defaults to `herald.toml` in the current
-directory; a missing file is not an error.
+`HERALD_GATEWAY` and `HERALD_PROJECT` override them. The token resolves as
+**process env > credential file > `herald.toml`** (`herald.toml` never holds a
+token):
+
+1. `HERALD_TOKEN` in the environment.
+2. The user credential file written by [`herald login`](#herald-login), at
+   `$HERALD_CONFIG_DIR/credentials` or `$XDG_CONFIG_HOME/herald/credentials`
+   (on Linux, `~/.config/herald/credentials`). It is written `0600`; it is a
+   single bearer token, so keep it on a machine you trust.
+3. Nothing else.
+
+If the gateway URL is unset, the command exits with an error before any network
+call. `--config` defaults to `herald.toml` in the current directory; a missing
+file is not an error.
+
+### Noninteractive CI
+
+CI and other noninteractive callers must get the token from the environment and
+never prompt. `HERALD_TOKEN` is the supported path:
+
+```sh
+# GitHub Actions (the repo's committed herald.toml supplies project + gateway)
+env:
+  HERALD_TOKEN: ${{ secrets.HERALD_TOKEN }}
+```
+
+`herald login --token "$HERALD_TOKEN" --gateway "$HERALD_GATEWAY" --project axis`
+also stores a token without prompting, if you prefer to write the credential
+file in a setup step. Either way, a missing gateway or token is an error, not a
+prompt.
 
 ## Commands
 
 `herald --help` prints the full usage. Exit codes are listed
 [below](#exit-codes).
+
+### `herald login`
+
+Onboard a machine: store a bearer token where every shell and agent session can
+find it, and record the gateway and project. It reuses the existing project
+token (#30); it never invents a new credential type.
+
+```sh
+# Hosted: sign in with a magic link and mint a project token
+herald login --gateway https://cloud.example.com --project axis --email you@example.com
+
+# Self-host: paste a token the operator issued
+herald login --gateway http://localhost:8787 --project axis
+
+# Noninteractive: store a token you already have, never prompt
+herald login --gateway "$HERALD_GATEWAY" --project axis --token "$HERALD_TOKEN"
+
+# Verify end to end after storing
+herald login --gateway https://cloud.example.com --project axis --test
+```
+
+| Flag | Meaning |
+|---|---|
+| `--gateway` | Gateway origin (defaults to `HERALD_GATEWAY` or `herald.toml`). |
+| `--project` | Project slug (defaults to `HERALD_PROJECT`, `herald.toml`, then the git repo name). |
+| `--token` | Store this token and do not prompt (defaults to `HERALD_TOKEN`). |
+| `--email` | Hosted sign-in: mail a magic link to this address. |
+| `--test` | Submit one test event after storing the token. |
+| `--config` | `herald.toml` to write (default `herald.toml`). |
+
+What it writes:
+
+- The token to the **credential file**, mode `0600` (see
+  [Configuration](#configuration)). It is never printed.
+- `project` and `gateway` to `herald.toml` (no secret), so the project is
+  configured for `send`, `mcp` and `skill`.
+
+Token source precedence is `--token`, then `HERALD_TOKEN`, then `--email`, then
+an interactive prompt for a pasted token. Only the prompt path reads stdin, so
+`--token` / `HERALD_TOKEN` are safe for CI.
+
+**Hosted magic-link flow.** With `--email`, the CLI requests a sign-in link,
+prints an instruction to paste the link from the inbox, redeems it to a session,
+creates the project if it does not exist, then mints a **single-project token**
+(least privilege) and discards the session. It never opens a browser, so it
+works on a headless host. Do not open the link in a browser first — the link is
+single-use, and the CLI needs to redeem it. See
+[docs/cloud-auth.md](cloud-auth.md#cli-login).
 
 ### `herald send`
 
@@ -209,7 +285,7 @@ Gateway errors from `send`/`mcp` are printed to stderr as
 
 | Code | Status | Cause and fix |
 |---|---|---|
-| `unauthenticated` | 401 | `HERALD_TOKEN` missing, wrong, revoked, or not scoped to `project`. Issue/rotate a token with `herald token create`. |
+| `unauthenticated` | 401 | `HERALD_TOKEN` missing, wrong, revoked, or not scoped to `project`. Run `herald login` (or issue/rotate a token with `herald token create`). |
 | `validation_failed` | 422 | A field is missing or out of range (commonly `title`). The message names the offending `field`. |
 | `rate_limited` | 429 | The project's submit budget is exhausted. Honour `Retry-After` and back off; see [docs/rate-limiting.md](rate-limiting.md). |
 | `unsupported_media_type` | 415 | The HTTP client sent a non-JSON content type (rare from the CLI). |
@@ -229,8 +305,10 @@ Gateway errors from `send`/`mcp` are printed to stderr as
 
 ## Security boundaries
 
-- `HERALD_TOKEN` is a secret. Keep it in the environment or a secret manager;
-  never in `herald.toml`, a repository, or a log line. The CLI never prints it.
+- `HERALD_TOKEN` is a secret. Keep it in the environment, a secret manager, or
+  the `0600` credential file written by `herald login` (one bearer token, kept
+  outside the repository); never in `herald.toml`, a repository, or a log line.
+  The CLI never prints it.
 - The recipient is pinned server-side from the token and `gateway.toml`. The CLI
   cannot choose where a notification goes.
 - Event text is untrusted. Never paste secrets; the gateway redacts
