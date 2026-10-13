@@ -186,7 +186,7 @@ in
           root = cfg.webRoot;
           locations."/" = {
             index = "index.html";
-            tryFiles = [ "$uri" "$uri/" "=404" ];
+            tryFiles = "$uri $uri/ =404";
           };
         };
       })
