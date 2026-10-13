@@ -1,0 +1,398 @@
+openapi: 3.1.0
+info:
+  title: Herald API
+  version: "1.0.0"
+  description: |
+    Herald accepts agent "work finished" events over HTTPS, authenticates the
+    token, pins the destination from the credential, redacts secrets, and queues
+    delivery to the configured sinks.
+
+    The canonical endpoint is `POST /v1/events`. `POST /v1/reports` is a
+    deprecated alias that behaves identically and answers with `Deprecation: true`
+    and `Link: </v1/events>; rel="successor-version"`.
+
+    This document mirrors the implemented contract; the human-readable
+    reference is [docs/http-api.md](docs/http-api.md). All examples use the
+    placeholder host `herald.example.com`.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://herald.example.com
+    description: Placeholder origin — replace with your deployment.
+tags:
+  - name: Events
+  - name: Health
+security:
+  - bearerAuth: []
+paths:
+  /v1/events:
+    post:
+      tags: [Events]
+      summary: Submit an event
+      description: |
+        Accepts one agent event and returns its id. Idempotent when a stable
+        `occurrenceId` (or legacy `idempotencyKey`) is supplied.
+      operationId: submitEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRequest"
+            examples:
+              success:
+                summary: A finished task
+                value:
+                  project: axis
+                  status: success
+                  title: deploy finished
+                  body: main is green; 3 commits shipped
+                  links:
+                    - label: PR
+                      url: https://github.com/example/repo/pull/42
+                  context:
+                    host: ci-runner-7
+                  agent: herdr-build
+                  occurrenceId: deploy-2026-10-13
+      responses:
+        "202":
+          description: Event accepted and queued for delivery.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/reports:
+    post:
+      tags: [Events]
+      deprecated: true
+      summary: Deprecated alias for POST /v1/events
+      description: |
+        Deprecated. Identical request and response to `POST /v1/events`, with
+        `Deprecation: true` and `Link: </v1/events>; rel="successor-version"`
+        added to every response. Migrate to `/v1/events`.
+      operationId: submitReportAlias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRequest"
+      responses:
+        "202":
+          description: Event accepted and queued for delivery.
+          headers:
+            Deprecation:
+              $ref: "#/components/headers/Deprecation"
+            Link:
+              $ref: "#/components/headers/SuccessorVersion"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      security: []
+      operationId: healthz
+      responses:
+        "200":
+          description: The process is serving.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ok"
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      security: []
+      operationId: readyz
+      responses:
+        "200":
+          description: The database is reachable and the dispatcher is progressing.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ready"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /metrics:
+    get:
+      tags: [Health]
+      summary: Prometheus metrics
+      security: []
+      operationId: metrics
+      responses:
+        "200":
+          description: Prometheus text exposition.
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        `herald_<project>_<secret>` (single project) or `heraldacct_<secret>`
+        (scoped; the request body must name the target project). Issued by
+        `herald token create`.
+  headers:
+    XRateLimitLimit:
+      description: The submit limit closest to exhaustion, when a limit is active.
+      schema:
+        type: integer
+    XRateLimitRemaining:
+      description: Submits left in that limit's window.
+      schema:
+        type: integer
+    XRateLimitReset:
+      description: Unix seconds when that window resets.
+      schema:
+        type: integer
+    RetryAfter:
+      description: Whole seconds to wait before retrying (never below 1).
+      schema:
+        type: integer
+        minimum: 1
+    Deprecation:
+      description: Present on `/v1/reports` responses.
+      schema:
+        type: string
+        const: "true"
+    SuccessorVersion:
+      description: Points to the replacement endpoint.
+      schema:
+        type: string
+        const: '</v1/events>; rel="successor-version"'
+  schemas:
+    EventRequest:
+      type: object
+      additionalProperties: true
+      required: [status, title, agent]
+      properties:
+        project:
+          type: string
+          description: |
+            Project slug. Required for a scoped token; for a project token it may
+            be omitted and, if present, must match the token's project.
+        status:
+          type: string
+          enum: [success, failure, blocked]
+          description: Outcome. Case-insensitive; stored lowercase.
+        title:
+          type: string
+          maxLength: 200
+          description: Short summary. Required after trimming.
+        body:
+          type: string
+          maxLength: 65536
+          description: Free-text details.
+        links:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/Link"
+        context:
+          type: object
+          maxProperties: 8
+          description: |
+            Bounded metadata. Keys are `[a-z0-9_-]`, at most 32 chars, and may
+            not be `agent`, `project`, `tenant` or `status`. Values are at most
+            128 chars with no control characters.
+          additionalProperties:
+            type: string
+            maxLength: 128
+        agent:
+          type: string
+          pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          maxLength: 64
+          description: Agent slug. Required over HTTP; the CLI and MCP tool default it.
+        occurrenceId:
+          type: string
+          pattern: "^[A-Za-z0-9_.:-]+$"
+          maxLength: 124
+          description: Stable id for one logical event; a safe retry key.
+        idempotencyKey:
+          type: string
+          pattern: "^[A-Za-z0-9_.:-]+$"
+          maxLength: 128
+          description: Legacy retry key; alternative to `occurrenceId`.
+    Link:
+      type: object
+      required: [label, url]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+          maxLength: 64
+        url:
+          type: string
+          maxLength: 2048
+          format: uri
+          pattern: "^https?://"
+          description: Absolute http/https URL only.
+    EventAccepted:
+      type: object
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          example: evt_01JABCXYZ
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+    ErrorDetail:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Stable, machine-readable error code.
+          enum:
+            - invalid_json
+            - unauthenticated
+            - payload_too_large
+            - unsupported_media_type
+            - validation_failed
+            - rate_limited
+            - unavailable
+        message:
+          type: string
+        field:
+          type: string
+          description: Present only for `validation_failed`.
+          enum: [title, body, status, links, agent, context, idempotencyKey, occurrenceId]
+  responses:
+    BadRequest:
+      description: The request body could not be read or was not valid JSON.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: invalid_json
+              message: malformed JSON
+    Unauthorized:
+      description: Missing, invalid, revoked or out-of-scope bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unauthenticated
+              message: invalid or out-of-scope token
+    PayloadTooLarge:
+      description: The request body exceeds the server's maximum (default 256 KiB).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: payload_too_large
+              message: request body too large
+    UnsupportedMediaType:
+      description: Content-Type is missing or not application/json.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unsupported_media_type
+              message: Content-Type must be application/json
+    ValidationFailed:
+      description: Well-formed JSON that violates a validation rule.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: validation_failed
+              message: title is required
+              field: title
+    RateLimited:
+      description: The project's submit budget is exhausted.
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/XRateLimitLimit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/XRateLimitRemaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/XRateLimitReset"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: rate_limited
+              message: submit limit exceeded
+    Unavailable:
+      description: A dependency failed; safe to retry.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unavailable
+              message: service unavailable
