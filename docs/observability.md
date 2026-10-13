@@ -47,11 +47,13 @@ set. Bearer tokens, project ids, and event bodies are **never** used as labels.
 | `herald_http_requests_total` | counter | `route`, `method`, `status` | HTTP requests accepted, by route, method, and response status. |
 | `herald_http_request_duration_seconds` | histogram | `route`, `method` | HTTP request latency (default Prometheus buckets). |
 | `herald_delivery_attempts_total` | counter | `sink` | Delivery attempts (one per `sink.Deliver` call). |
-| `herald_delivery_outcomes_total` | counter | `sink`, `outcome` | Attempt result: `delivered`, `retry`, `dead`, or `bounce` (a hard recipient rejection). |
+| `herald_delivery_outcomes_total` | counter | `sink`, `outcome` | Attempt result: `delivered`, `retry`, `dead`, `bounce` (a hard recipient rejection), or `suppressed` (refused because the address is on the suppression list). |
 | `herald_delivery_duration_seconds` | histogram | `sink`, `outcome` | Delivery attempt latency. |
 | `herald_dispatcher_last_poll_timestamp_seconds` | gauge | — | Unix time of the dispatcher's last successful queue poll. |
 | `herald_submit_rejections_total` | counter | `scope` | Submits rejected by a limit, by scope (`requests`, `daily`, `monthly`, `queue`); a rising rate is a send-rate spike or abuse. |
 | `herald_delivery_backlog` | gauge | — | Pending and inflight deliveries across all tenants, sampled by the dispatcher on each successful poll. |
+| `herald_email_events_total` | counter | `kind` | Provider notifications ingested, by kind (`delivery`, `bounce`, `complaint`). Acceptance and cost are derived from this and `herald_delivery_outcomes_total` (see [Cost](#cost)). |
+| `herald_email_suppressions_total` | counter | `reason` | Addresses added to the platform-wide suppression list, by reason (`bounce`, `complaint`). |
 
 `route` is the matched `http.ServeMux` pattern with the method stripped (for
 example `/v1/events`); unmatched requests become `other`. Unknown HTTP methods
@@ -65,10 +67,11 @@ inflate cardinality.
 # TYPE herald_http_requests_total counter
 herald_http_requests_total{method="POST",route="/v1/events",status="202"} 42
 herald_http_requests_total{method="POST",route="/v1/events",status="401"} 3
-# HELP herald_delivery_outcomes_total Delivery attempts, by sink and outcome (delivered, retry, dead).
+# HELP herald_delivery_outcomes_total Delivery attempts, by sink and outcome (delivered, retry, dead, bounce, suppressed).
 # TYPE herald_delivery_outcomes_total counter
 herald_delivery_outcomes_total{outcome="delivered",sink="email"} 40
 herald_delivery_outcomes_total{outcome="dead",sink="webhook"} 2
+herald_delivery_outcomes_total{outcome="suppressed",sink="email"} 1
 # HELP herald_dispatcher_last_poll_timestamp_seconds Unix time of the dispatcher's last successful queue poll.
 # TYPE herald_dispatcher_last_poll_timestamp_seconds gauge
 herald_dispatcher_last_poll_timestamp_seconds 1760000000
@@ -101,6 +104,41 @@ sum by (scope) (rate(herald_submit_rejections_total[5m]))
 
 # Queue congestion: pending + inflight sampled by the dispatcher.
 herald_delivery_backlog
+
+# Addresses suppressed by a bounce or complaint, per minute.
+sum by (reason) (rate(herald_email_suppressions_total[5m]))
+
+# Delivery attempts refused because the address is suppressed.
+sum(rate(herald_delivery_outcomes_total{outcome="suppressed"}[5m]))
+
+# Ingested provider notifications, by kind (a spike is a delivery problem).
+sum by (kind) (rate(herald_email_events_total[5m]))
+```
+
+## Cost
+
+The provider (SES) is the billing source of truth, so Herald does not invent a
+price. Because there is one shared relay, the month's spend is the accepted-send
+count times the provider's per-message rate:
+
+```promql
+# Accepted sends this month (hosted email sinks).
+sum(increase(herald_delivery_outcomes_total{outcome="delivered",sink=~"dst_.*"}[30d]))
+```
+
+Multiply by the SES rate for the deployment's region and add any fixed fees. For
+the `<$20/mo` budget, alert well before the ceiling:
+
+```yaml
+      - alert: HeraldEmailCostApproachingBudget
+        # 20,000 accepted sends at $0.10/1,000 ≈ $2; adjust the rate to the region.
+        expr: >
+          sum(increase(herald_delivery_outcomes_total{outcome="delivered",sink=~"dst_.*"}[30d]))
+          * 0.0001 > 15
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "Herald estimated email spend is approaching the monthly budget"
 ```
 
 ## Queue queries (source of truth)
@@ -192,6 +230,13 @@ groups:
         annotations:
           summary: "Herald dead-lettered a bounced email on {{ $labels.sink }}"
 
+      - alert: HeraldEmailSuppressions
+        expr: increase(herald_email_suppressions_total[15m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Herald suppressed an address ({{ $labels.reason }}) after a provider event"
+
       - alert: HeraldSubmitRejectionsSpiking
         expr: sum by (scope) (rate(herald_submit_rejections_total[5m])) > 10
         for: 10m
@@ -210,9 +255,13 @@ groups:
 Bounce/complaint coverage is split by what the delivery path can observe
 synchronously. A **hard SMTP bounce** (a 5xx reply) is classified by the email
 sink, dead-lettered at once, and counted as `outcome="bounce"`. **Asynchronous
-complaints** (feedback-loop reports) and ESP-side bounce webhooks arrive out of
-band and are not ingested yet; that depends on managed email (#32) and is
-tracked as remaining work on #35.
+bounces and complaints** (ESP feedback) arrive out of band: the authenticated,
+replay-safe ingestion endpoint described in
+[deliverability.md](deliverability.md) adds the address to the platform-wide
+suppression list and counts `herald_email_events_total` /
+`herald_email_suppressions_total`. A later delivery to a suppressed address is
+refused at once and counted as `outcome="suppressed"` — a different signal from
+a live provider bounce, so the two are not conflated.
 
 Alerts that need the durable queue (SQL, e.g. via a metrics exporter or a cron
 check). Use these thresholds as a starting point:

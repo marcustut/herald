@@ -97,10 +97,42 @@ func TestObserveSubmitRejectionsAndBacklog(t *testing.T) {
 func TestObserveBounceOutcome(t *testing.T) {
 	r := metrics.NewRegistry()
 	r.ObserveDelivery("email", app.OutcomeBounce, time.Millisecond)
+	r.ObserveDelivery("email", app.OutcomeSuppressed, time.Millisecond)
 
 	body := scrape(t, r)
 	if !strings.Contains(body, `herald_delivery_outcomes_total{outcome="bounce",sink="email"} 1`) {
 		t.Fatalf("bounce outcome missing\n%s", body)
+	}
+	if !strings.Contains(body, `herald_delivery_outcomes_total{outcome="suppressed",sink="email"} 1`) {
+		t.Fatalf("suppressed outcome missing\n%s", body)
+	}
+}
+
+func TestObserveEmailEventsAndSuppressions(t *testing.T) {
+	r := metrics.NewRegistry()
+	r.ObserveEmailEvent("bounce")
+	r.ObserveEmailEvent("complaint")
+	r.ObserveEmailEvent("complaint")
+	r.ObserveEmailEvent("not-a-kind")
+	r.ObserveSuppression("bounce")
+	r.ObserveSuppression("not-a-reason")
+
+	body := scrape(t, r)
+	for _, want := range []string{
+		"# TYPE herald_email_events_total counter",
+		`herald_email_events_total{kind="bounce"} 1`,
+		`herald_email_events_total{kind="complaint"} 2`,
+		`herald_email_events_total{kind="other"} 1`,
+		"# TYPE herald_email_suppressions_total counter",
+		`herald_email_suppressions_total{reason="bounce"} 1`,
+		`herald_email_suppressions_total{reason="other"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics output missing %q\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "not-a-kind") || strings.Contains(body, "not-a-reason") {
+		t.Fatalf("unbounded label leaked\n%s", body)
 	}
 }
 

@@ -31,9 +31,15 @@ type Gateway struct {
 // and always for a self-hosted deployment) no accounts, signup or sign-in
 // routes are registered and the server behaves as if the feature were absent.
 // BaseURL is the absolute origin the magic-link callback points at.
+//
+// BounceWebhook enables the provider bounce/complaint ingestion endpoint
+// (POST /cloud/v1/email/events). It is shared-secret authenticated with
+// HERALD_BOUNCE_WEBHOOK_SECRET, which is read from the environment so no secret
+// lives in the config file. See docs/deliverability.md.
 type Cloud struct {
-	Enabled bool   `toml:"enabled"`
-	BaseURL string `toml:"base_url"`
+	Enabled       bool   `toml:"enabled"`
+	BaseURL       string `toml:"base_url"`
+	BounceWebhook bool   `toml:"bounce_webhook"`
 }
 
 // Security holds the outbound-delivery hardening knobs. A webhook destination
@@ -261,6 +267,9 @@ func (s Security) validate() error {
 // validate rejects an enabled cloud section that lacks the pieces the sign-in
 // flow needs. A disabled section is ignored, so existing configs are unchanged.
 func (c Cloud) validate(smtp SMTP) error {
+	if c.BounceWebhook && !c.Enabled {
+		return errors.New("cloud.bounce_webhook requires cloud.enabled")
+	}
 	if !c.Enabled {
 		return nil
 	}

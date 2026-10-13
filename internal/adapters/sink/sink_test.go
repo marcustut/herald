@@ -192,6 +192,37 @@ func TestEmailSMTPClassification(t *testing.T) {
 	}
 }
 
+// A server reply that echoes the recipient must not leak the mailbox into the
+// error a log line or a stored last_error would carry, while the bounce
+// classification is preserved.
+func TestEmailRedactsRecipientFromSMTPError(t *testing.T) {
+	const addr = "secret@example.com"
+	bounce := NewEmail("email", EmailConfig{From: "h@x", Recipient: addr}).
+		WithTransport(&fakeTransport{err: &textproto.Error{Code: 550, Msg: "550 <" + addr + ">: mailbox unavailable"}})
+	err := bounce.Deliver(context.Background(), sampleEvent())
+	if !app.IsBounce(err) || !app.IsPermanent(err) {
+		t.Fatalf("err = %v, want permanent bounce", err)
+	}
+	if strings.Contains(err.Error(), addr) {
+		t.Fatalf("error leaked the recipient: %v", err)
+	}
+	if !strings.Contains(err.Error(), domain.RedactionMarker) {
+		t.Fatalf("error was not redacted: %v", err)
+	}
+
+	// A transient reply that names the address is redacted too, and stays
+	// retryable.
+	retry := NewEmail("email", EmailConfig{From: "h@x", Recipient: addr}).
+		WithTransport(&fakeTransport{err: &textproto.Error{Code: 450, Msg: "450 " + addr + " greylisted"}})
+	err = retry.Deliver(context.Background(), sampleEvent())
+	if app.IsPermanent(err) {
+		t.Fatalf("err = %v, want retryable", err)
+	}
+	if strings.Contains(err.Error(), addr) {
+		t.Fatalf("error leaked the recipient: %v", err)
+	}
+}
+
 func TestHostOf(t *testing.T) {
 	if got := hostOf("smtp.example.com:587"); got != "smtp.example.com" {
 		t.Fatalf("got %q", got)

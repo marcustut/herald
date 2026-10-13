@@ -15,10 +15,12 @@ type capturedDelivery struct {
 }
 
 type captureObserver struct {
-	deliveries []capturedDelivery
-	polls      int
-	rejects    []string
-	depths     []int
+	deliveries   []capturedDelivery
+	polls        int
+	rejects      []string
+	depths       []int
+	emailEvents  []string
+	suppressions []string
 }
 
 func (o *captureObserver) ObserveHTTP(string, string, int, time.Duration) {}
@@ -28,6 +30,10 @@ func (o *captureObserver) ObserveDelivery(sink domain.SinkID, outcome DeliveryOu
 func (o *captureObserver) ObserveDispatchPoll(time.Time)       { o.polls++ }
 func (o *captureObserver) ObserveSubmitRejection(scope string) { o.rejects = append(o.rejects, scope) }
 func (o *captureObserver) ObserveQueueDepth(depth int)         { o.depths = append(o.depths, depth) }
+func (o *captureObserver) ObserveEmailEvent(kind string)       { o.emailEvents = append(o.emailEvents, kind) }
+func (o *captureObserver) ObserveSuppression(reason string) {
+	o.suppressions = append(o.suppressions, reason)
+}
 
 type countingHeartbeat struct{ beats int }
 
@@ -88,6 +94,29 @@ func TestObserverCountsBounce(t *testing.T) {
 	}
 	if len(obs.deliveries) != 1 || obs.deliveries[0].outcome != OutcomeBounce {
 		t.Fatalf("observed = %+v, want one bounce", obs.deliveries)
+	}
+}
+
+// A delivery refused because its address is suppressed dead-letters at once and
+// is counted as a suppression, separate from a provider bounce.
+func TestObserverCountsSuppressed(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
+	obs := &captureObserver{}
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{
+		"email": &fakeSink{id: "email", err: Suppressed(errors.New("recipient is on the suppression list"))},
+	})
+	uc.Observer = obs
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := deliveries.row("del_1").State; got != domain.DeliveryDead {
+		t.Fatalf("state = %q, want dead", got)
+	}
+	if len(obs.deliveries) != 1 || obs.deliveries[0].outcome != OutcomeSuppressed {
+		t.Fatalf("observed = %+v, want one suppression", obs.deliveries)
 	}
 }
 

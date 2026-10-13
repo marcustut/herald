@@ -25,12 +25,15 @@ type migration struct {
 // same shape. Version 2 adds the durable ownership model. Version 3 adds the
 // hosted sign-in state: single-use magic-link tokens, browser sessions, and a
 // global uniqueness rule on user email. Version 4 adds destination
-// verification.
+// verification. Version 5 adds the email-safety tables: the platform-wide
+// suppression list and the provider-event ingestion log that makes bounce and
+// complaint webhooks replay-safe.
 var migrations = []migration{
 	{version: 1, name: "baseline", sql: baselineSchema},
 	{version: 2, name: "ownership", sql: ownershipSchema},
 	{version: 3, name: "auth", sql: authSchema},
 	{version: 4, name: "destination_verification", sql: destinationVerificationSchema},
+	{version: 5, name: "email_safety", sql: emailSafetySchema},
 }
 
 // ownershipSchema is migration version 2. It adds the account/user/tenant/
@@ -138,6 +141,31 @@ CREATE TABLE IF NOT EXISTS destination_verifications (
 	used_at        timestamptz
 );
 CREATE INDEX IF NOT EXISTS destination_verifications_destination ON destination_verifications (destination_id);
+`
+
+// emailSafetySchema is migration version 5. `suppressions` is the platform-wide
+// do-not-send list: an address is added by a permanent bounce or a complaint and
+// the hosted delivery path refuses it from then on. `email_provider_events`
+// records each ingested provider notification by its id, so a replayed bounce or
+// complaint webhook is a no-op (the suppression is applied in the same
+// transaction only when the id is new). Only the fields Herald acts on are
+// stored; the raw provider payload, which may quote message content and
+// addresses, is never persisted. It is purely additive.
+const emailSafetySchema = `
+CREATE TABLE IF NOT EXISTS suppressions (
+	address    text PRIMARY KEY,
+	reason     text NOT NULL,
+	created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_provider_events (
+	event_id    text PRIMARY KEY,
+	kind        text NOT NULL,
+	address     text NOT NULL,
+	permanent   boolean NOT NULL,
+	received_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS email_provider_events_address ON email_provider_events (address);
 `
 
 const schemaMigrationsDDL = `

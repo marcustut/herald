@@ -102,6 +102,16 @@ func (r *Registry) ObserveQueueDepth(depth int) {
 	r.set("herald_delivery_backlog", nil, float64(depth))
 }
 
+// ObserveEmailEvent satisfies app.Observer.
+func (r *Registry) ObserveEmailEvent(kind string) {
+	r.inc("herald_email_events_total", labels{"kind": emailEventKind(kind)})
+}
+
+// ObserveSuppression satisfies app.Observer.
+func (r *Registry) ObserveSuppression(reason string) {
+	r.inc("herald_email_suppressions_total", labels{"reason": suppressionReason(reason)})
+}
+
 // ServeHTTP renders the registry in the Prometheus text exposition format.
 func (r *Registry) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -228,6 +238,8 @@ var meta = map[string][2]string{
 	"herald_dispatcher_last_poll_timestamp_seconds": {"gauge", "Unix time of the dispatcher's last successful queue poll."},
 	"herald_submit_rejections_total":                {"counter", "Submits rejected by a limit, by scope (requests, daily, monthly, queue)."},
 	"herald_delivery_backlog":                       {"gauge", "Pending and inflight deliveries across all tenants, sampled by the dispatcher."},
+	"herald_email_events_total":                     {"counter", "Ingested provider email notifications, by kind (delivery, bounce, complaint)."},
+	"herald_email_suppressions_total":               {"counter", "Addresses added to the suppression list, by reason (bounce, complaint)."},
 }
 
 func writeMeta(b *strings.Builder, name string) {
@@ -257,6 +269,28 @@ func httpMethod(m string) string {
 func rejectScope(s string) string {
 	switch s {
 	case app.ScopeRequests, app.ScopeDaily, app.ScopeMonthly, app.ScopeQueue:
+		return s
+	default:
+		return "other"
+	}
+}
+
+// emailEventKind bounds the provider-event kind to the known app.EmailEvent*
+// values; an unknown kind becomes "other".
+func emailEventKind(s string) string {
+	switch app.EmailEventKind(s) {
+	case app.EmailEventDelivery, app.EmailEventBounce, app.EmailEventComplaint:
+		return s
+	default:
+		return "other"
+	}
+}
+
+// suppressionReason bounds the suppression reason to the known values; an
+// unknown reason becomes "other".
+func suppressionReason(s string) string {
+	switch s {
+	case "bounce", "complaint":
 		return s
 	default:
 		return "other"

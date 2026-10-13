@@ -86,6 +86,40 @@ Email delivery fails safe for remote transports:
 and the `Subject` is RFC 2047 encoded, so event content cannot inject mail
 headers.
 
+## Outbound email safety: suppression and provider webhooks
+
+Deliverability is part of the trust boundary: one shared relay means one
+address that bounces hard can damage every tenant's sending. Herald therefore:
+
+- **Suppresses globally.** A hard bounce or a complaint adds the address to a
+  platform-wide suppression list. The hosted delivery path checks it live, so a
+  suppression added after an event was queued still takes effect, and refuses a
+  suppressed address permanently — dead-lettered with no retry. Unverified and
+  removed destinations are refused the same way (see [Sinks are pinned
+  server-side](#sinks-are-pinned-server-side)).
+- **Authenticates ingestion.** The provider bounce/complaint endpoint
+  (`POST /cloud/v1/email/events`) is off unless `[cloud] bounce_webhook` is set,
+  and requires the shared secret from `HERALD_BOUNCE_WEBHOOK_SECRET`, compared
+  in constant time. It 404s like any absent cloud route when unconfigured, so a
+  probe cannot tell it apart from a route that does not exist.
+- **Is replay-safe.** Ingestion is idempotent by provider event id, in one
+  transaction with the suppression, so a retried or duplicated webhook cannot
+  re-apply its effect.
+- **Never fetches provider URLs.** An SNS `SubscriptionConfirmation` is
+  acknowledged without fetching its `SubscribeURL`, closing the
+  unauthenticated-request shape. The owner confirms the subscription in the SNS
+  console.
+- **Never logs the mailbox or payload.** The provider body is not persisted;
+  only the fields Herald acts on (kind, address, permanence, event id) reach the
+  database. SMTP transport errors have the recipient address stripped before
+  they reach a log line or a stored `last_error`, while the bounce
+  classification is preserved. Metric labels stay bounded (`kind`, `reason`),
+  never an address.
+
+The suppression list is deliberately global, not tenant-scoped: it is a
+deliverability safeguard for the shared sending identity, not tenant data. See
+[deliverability.md](deliverability.md) for the owner's DNS and wiring steps.
+
 ## Content: redact at ingest, never log bodies
 
 Event content is untrusted free text and may contain credentials. Herald:
@@ -127,6 +161,13 @@ The following behaviours are covered by automated tests:
 | Unverified destination is never routed to | `internal/adapters/postgres` `TestDestinationRoutingRequiresVerification` |
 | Verification token is single-use, expires, and cascades with its destination | `TestDestinationVerificationTokens` |
 | Destination ownership comes from the session, and CSRF is enforced | `internal/adapters/httpapi` `TestCloudDestinationOwnershipComesFromSession`, `TestCloudDestinationRequiresSessionAndCSRF` |
+| A suppressed address is refused permanently and never delivered to | `internal/adapters/sink` `TestDestinationSourceRefusesSuppressed` |
+| A suppression-store outage is retryable, not a silent drop | `TestDestinationSourceSuppressionStoreErrorIsRetryable` |
+| SMTP errors redact the recipient but keep the bounce classification | `TestEmailRedactsRecipientFromSMTPError` |
+| Bounce webhook is absent unless configured, and rejects a missing/wrong secret | `internal/adapters/httpapi` `TestEmailEventRouteAbsentWithoutUseCaseOrSecret`, `TestEmailEventRequiresSecret` |
+| Replayed provider event is a no-op; transient bounce does not suppress | `TestEmailEventReplayIsIdempotent`, `TestEmailEventTransientBounceDoesNotSuppress` |
+| SNS subscription confirmation is acknowledged without fetching its URL | `TestEmailEventSubscriptionConfirmationIsAcknowledged` |
+| Suppression ingestion is idempotent under concurrency | `internal/adapters/postgres` `TestSuppressionsIngestConcurrent` |
 
 ## Deployment notes
 

@@ -64,10 +64,29 @@ The dispatcher classifies every failure:
 - **Permanent** (bad recipient, 4xx from a webhook, unknown sink, missing
   event): the row goes straight to `dead`. Retrying without fixing the cause
   just fails again.
+- **Suppressed** (hosted email): the address is on the platform-wide
+  suppression list after a hard bounce or a complaint, so the delivery is
+  refused and dead-lettered at once. Redriving will not help until the
+  suppression is removed (see below).
 - **Attempts exhausted**: a transient failure that kept failing is also `dead`.
 
 Read `LAST ERROR` from `herald delivery show <id>` before redriving. A permanent
 error that has not been fixed will not succeed on redrive.
+
+### Suppressed recipients
+
+A hard bounce or complaint webhook suppresses an address for the whole
+deployment. To recover after the mailbox is fixed:
+
+```sql
+-- Inspect, then remove only the address that was genuinely fixed.
+SELECT address, reason, created_at FROM suppressions ORDER BY created_at DESC;
+DELETE FROM suppressions WHERE address = 'user@example.com';
+```
+
+Then redrive the affected dead letters (`herald delivery requeue --sink <id>` or
+`--state dead`). See [deliverability.md](deliverability.md) for how the list is
+populated and why it is global.
 
 ## Safe repair and manual redrive
 

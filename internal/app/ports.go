@@ -259,6 +259,64 @@ type DestinationVerificationStore interface {
 	ConsumeDestinationVerification(ctx context.Context, hash string, now time.Time) (DestinationVerificationRecord, error)
 }
 
+// EmailEventKind is the bounded kind of a provider notification about an
+// outbound email.
+type EmailEventKind string
+
+const (
+	EmailEventDelivery  EmailEventKind = "delivery"
+	EmailEventBounce    EmailEventKind = "bounce"
+	EmailEventComplaint EmailEventKind = "complaint"
+)
+
+// ProviderEvent is one notification about an outbound email: a delivery
+// acceptance, a bounce or a complaint. Only the fields Herald acts on are
+// carried; the raw provider payload and the recipient address are never logged
+// or persisted beyond the suppression it may create.
+type ProviderEvent struct {
+	// ID is the provider's event id. Ingestion is idempotent by it, so a
+	// replayed webhook is a no-op.
+	ID      string
+	Kind    EmailEventKind
+	Address string
+	// Permanent reports a hard failure (a permanent bounce). A transient bounce
+	// (a full mailbox, greylisting) is recorded but never suppresses.
+	Permanent  bool
+	ReceivedAt time.Time
+}
+
+// Suppresses reports whether the event puts the address on the suppression
+// list: a complaint always, a bounce only when permanent. It is the same rule
+// the store applies, named once here.
+func (e ProviderEvent) Suppresses() bool {
+	return e.Kind == EmailEventComplaint || (e.Kind == EmailEventBounce && e.Permanent)
+}
+
+// Reason is the bounded suppression reason ("bounce" or "complaint").
+func (e ProviderEvent) Reason() string {
+	if e.Kind == EmailEventComplaint {
+		return "complaint"
+	}
+	return "bounce"
+}
+
+// SuppressionStore records platform-wide recipient suppressions and answers the
+// delivery path's checks. Suppression is keyed by normalized address and is
+// global to the deployment: one hard bounce or complaint stops every further
+// send to that mailbox, protecting the shared sending reputation the tenants
+// rely on.
+type SuppressionStore interface {
+	// Suppressed reports whether a normalized address is on the suppression
+	// list. The delivery path calls it live, so a suppression added after an
+	// event was queued still takes effect.
+	Suppressed(ctx context.Context, address string) (bool, error)
+	// IngestProviderEvent records a provider event id and, when the event is a
+	// permanent failure or complaint, suppresses its address, in one
+	// transaction. It returns false when the id was already recorded, so a
+	// replayed webhook cannot re-apply its effect.
+	IngestProviderEvent(ctx context.Context, e ProviderEvent) (recorded bool, err error)
+}
+
 // EventStore persists a event and its delivery rows atomically, and answers
 // idempotency lookups. Save returns ErrIdempotencyConflict when an event for the
 // same (tenant, project, idempotency key) already exists; the project scope lets
@@ -325,11 +383,14 @@ type Sink interface {
 // SinkError classifies a delivery failure. A permanent failure is not retried.
 // A bounce is a permanent failure that a sink recognised as a hard rejection of
 // the recipient (an SMTP 5xx, an invalid mailbox); it is dead-lettered at once
-// and counted separately from other dead letters.
+// and counted separately from other dead letters. A suppression is a permanent
+// refusal of an address Herald already knows is undeliverable, so it too is
+// dead-lettered at once and counted on its own.
 type SinkError struct {
-	Err       error
-	Permanent bool
-	Bounce    bool
+	Err        error
+	Permanent  bool
+	Bounce     bool
+	Suppressed bool
 }
 
 func (e *SinkError) Error() string { return e.Err.Error() }
@@ -340,6 +401,10 @@ func Permanent(err error) error { return &SinkError{Err: err, Permanent: true} }
 
 // Bounce wraps err as a permanent, non-retryable recipient rejection.
 func Bounce(err error) error { return &SinkError{Err: err, Permanent: true, Bounce: true} }
+
+// Suppressed wraps err as a permanent, non-retryable refusal of an address on
+// the suppression list (a prior hard bounce or complaint).
+func Suppressed(err error) error { return &SinkError{Err: err, Permanent: true, Suppressed: true} }
 
 // Retryable wraps err as retryable.
 func Retryable(err error) error { return &SinkError{Err: err} }
@@ -355,4 +420,10 @@ func IsPermanent(err error) bool {
 func IsBounce(err error) bool {
 	var se *SinkError
 	return errors.As(err, &se) && se.Bounce
+}
+
+// IsSuppressed reports whether err was a refusal of a suppressed address.
+func IsSuppressed(err error) bool {
+	var se *SinkError
+	return errors.As(err, &se) && se.Suppressed
 }
