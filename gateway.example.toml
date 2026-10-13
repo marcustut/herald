@@ -20,9 +20,23 @@ from_name = "Herald"
 # certificate's name (the box's cert is for mail.marcustut.me).
 server_name = "mail.marcustut.me"
 
+# Submit limits, enforced per project at POST /v1/events. Values inherit the
+# built-in defaults (60/1m, 2000/day, 20000/month) when omitted. See
+# docs/rate-limiting.md.
+[limits]
+requests = 60
+window = "1m"
+daily = 2000
+monthly = 20000
+
 # Which sinks each project fans out to.
 [projects.axis]
 sinks = ["email"]
+
+# A project may override any limit; unset fields inherit [limits].
+[projects.axis.limits]
+requests = 120
+window = "1m"
 
 [projects.finance]
 sinks = ["email", "slack"]

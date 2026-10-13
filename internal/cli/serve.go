@@ -15,6 +15,7 @@ import (
 	"github.com/marcustut/herald/internal/adapters/hash"
 	"github.com/marcustut/herald/internal/adapters/httpapi"
 	"github.com/marcustut/herald/internal/adapters/id"
+	"github.com/marcustut/herald/internal/adapters/memory"
 	"github.com/marcustut/herald/internal/adapters/secret"
 	"github.com/marcustut/herald/internal/adapters/sink"
 	"github.com/marcustut/herald/internal/app"
@@ -77,7 +78,8 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 			IDs:    id.Random{},
 			Clock:  systemClock{},
 		},
-		Logger: logger,
+		Limiter: memory.NewRateLimiter(cfg.EffectiveLimits(), systemClock{}),
+		Logger:  logger,
 	}
 
 	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)

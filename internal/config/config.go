@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/marcustut/herald/internal/app"
+	"github.com/marcustut/herald/internal/domain"
 )
 
 // Gateway is the server configuration. Secrets (SMTP password, token hashes)
@@ -14,8 +17,29 @@ import (
 type Gateway struct {
 	Server   Server             `toml:"server"`
 	SMTP     SMTP               `toml:"smtp"`
+	Limits   Limits             `toml:"limits"`
 	Projects map[string]Project `toml:"projects"`
 	Sinks    map[string]Sink    `toml:"sinks"`
+}
+
+// Built-in submit limits, applied to every project that does not override them.
+// They are deliberately generous for one agent but bounded, so a runaway or
+// compromised client cannot fill the queue. See docs/rate-limiting.md.
+const (
+	DefaultRequests = 60
+	DefaultWindow   = "1m"
+	DefaultDaily    = 2000
+	DefaultMonthly  = 20000
+)
+
+// Limits is one project's submit budget. Every field is optional: an unset
+// field inherits the global [limits] defaults. Window is a Go duration string
+// ("30s", "1m", "1h").
+type Limits struct {
+	Requests int    `toml:"requests"`
+	Window   string `toml:"window"`
+	Daily    int    `toml:"daily"`
+	Monthly  int    `toml:"monthly"`
 }
 
 type Server struct {
@@ -41,6 +65,8 @@ type SMTP struct {
 
 type Project struct {
 	Sinks []string `toml:"sinks"`
+	// Limits, when present, overrides the global [limits] for this project.
+	Limits *Limits `toml:"limits"`
 }
 
 type Sink struct {
@@ -58,10 +84,83 @@ func LoadGateway(path string) (Gateway, error) {
 	if !md.IsDefined("smtp", "from_name") {
 		g.SMTP.FromName = DefaultFromName
 	}
+	g.Limits = g.Limits.withDefaults()
 	if err := g.Validate(); err != nil {
 		return Gateway{}, err
 	}
 	return g, nil
+}
+
+// withDefaults fills every unset field with its built-in default. A zero value
+// means "unset"; there is no way to ask for zero requests, set a very high
+// number instead.
+func (l Limits) withDefaults() Limits {
+	if l.Requests == 0 {
+		l.Requests = DefaultRequests
+	}
+	if l.Window == "" {
+		l.Window = DefaultWindow
+	}
+	if l.Daily == 0 {
+		l.Daily = DefaultDaily
+	}
+	if l.Monthly == 0 {
+		l.Monthly = DefaultMonthly
+	}
+	return l
+}
+
+func (l Limits) validate(scope string) error {
+	if l.Requests < 0 || l.Daily < 0 || l.Monthly < 0 {
+		return fmt.Errorf("%s: limits must not be negative", scope)
+	}
+	if l.Window != "" {
+		d, err := time.ParseDuration(l.Window)
+		if err != nil {
+			return fmt.Errorf("%s: invalid window %q: %w", scope, l.Window, err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("%s: window must be positive", scope)
+		}
+	}
+	return nil
+}
+
+// EffectiveLimits resolves the global [limits] and each project's override into
+// the per-project budget the submit limiter enforces.
+func (g Gateway) EffectiveLimits() map[domain.ProjectID]app.Limits {
+	out := make(map[domain.ProjectID]app.Limits, len(g.Projects))
+	for slug, p := range g.Projects {
+		l := g.Limits.withDefaults()
+		if p.Limits != nil {
+			l = l.merge(*p.Limits)
+		}
+		d, _ := time.ParseDuration(l.Window)
+		out[domain.ProjectID(slug)] = app.Limits{
+			Requests: l.Requests,
+			Window:   d,
+			Daily:    l.Daily,
+			Monthly:  l.Monthly,
+		}
+	}
+	return out
+}
+
+// merge applies the non-zero override fields on top of base.
+func (l Limits) merge(over Limits) Limits {
+	if over.Requests != 0 {
+		l.Requests = over.Requests
+	}
+	if over.Window != "" {
+		l.Window = over.Window
+	}
+	if over.Daily != 0 {
+		l.Daily = over.Daily
+	}
+	if over.Monthly != 0 {
+		l.Monthly = over.Monthly
+	}
+	return l
 }
 
 func (g Gateway) Validate() error {
@@ -74,9 +173,17 @@ func (g Gateway) Validate() error {
 	if len(g.Projects) == 0 {
 		return errors.New("at least one project is required")
 	}
+	if err := g.Limits.validate("limits"); err != nil {
+		return err
+	}
 	for slug, p := range g.Projects {
 		if slug == "" {
 			return errors.New("project slug must not be empty")
+		}
+		if p.Limits != nil {
+			if err := p.Limits.validate("project " + slug + " limits"); err != nil {
+				return err
+			}
 		}
 		if len(p.Sinks) == 0 {
 			return fmt.Errorf("project %q has no sinks", slug)

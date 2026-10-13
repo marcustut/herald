@@ -7,9 +7,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/marcustut/herald/internal/app"
 	"github.com/marcustut/herald/internal/domain"
@@ -21,6 +24,7 @@ const defaultMaxBody = 256 << 10
 type Server struct {
 	Auth    app.Authenticator
 	Submit  app.SubmitEvent
+	Limiter app.RateLimiter
 	Ready   func(ctx context.Context) error
 	MaxBody int64
 	Logger  *slog.Logger
@@ -98,6 +102,22 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		s.serverError(w, err)
 		return
+	}
+
+	// Rate limiting happens after authentication so an invalid token always
+	// answers 401 and a caller cannot use 429 to probe for valid tokens.
+	if s.Limiter != nil {
+		decision, err := s.Limiter.Allow(r.Context(), principal.TenantID, principal.ProjectID)
+		if err != nil {
+			s.serverError(w, err)
+			return
+		}
+		writeRateLimit(w, decision)
+		if !decision.Allowed {
+			w.Header().Set("Retry-After", seconds(decision.RetryAfter))
+			writeError(w, http.StatusTooManyRequests, "rate_limited", "submit limit exceeded", "")
+			return
+		}
 	}
 
 	id, err := s.Submit.Handle(r.Context(), principal, payload.request())
@@ -236,4 +256,27 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// writeRateLimit advertises the tightest remaining budget. Reset is Unix
+// seconds; a decision with no active limit emits no headers.
+func writeRateLimit(w http.ResponseWriter, d app.Decision) {
+	if d.Limit <= 0 {
+		return
+	}
+	h := w.Header()
+	h.Set("X-RateLimit-Limit", strconv.Itoa(d.Limit))
+	h.Set("X-RateLimit-Remaining", strconv.Itoa(d.Remaining))
+	if !d.Reset.IsZero() {
+		h.Set("X-RateLimit-Reset", strconv.FormatInt(d.Reset.Unix(), 10))
+	}
+}
+
+// seconds renders a Retry-After delta as whole seconds, never below one.
+func seconds(d time.Duration) string {
+	secs := int(math.Ceil(d.Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	return strconv.Itoa(secs)
 }

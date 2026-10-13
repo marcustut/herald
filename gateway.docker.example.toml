@@ -21,6 +21,15 @@ addr = "smtp.example.com:587"
 from = "herald@example.com"
 server_name = "smtp.example.com"
 
+# Submit limits, enforced per project. Omit to use the built-in bounded
+# defaults (60/1m, 2000/day, 20000/month); override per project with a
+# [projects.<name>.limits] table. See docs/rate-limiting.md.
+[limits]
+requests = 60
+window = "1m"
+daily = 2000
+monthly = 20000
+
 # Each project fans out to the sinks named here.
 [projects.axis]
 sinks = ["email"]
