@@ -104,6 +104,17 @@ in
         https://<domain>/api/v1/events).
       '';
     };
+
+    webRoot = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Directory of static files to serve at the domain root — for example the
+        shipped landing page (``<herald>/site``). When set, ``https://<domain>/``
+        serves these files while the API stays under basePath, so basePath must
+        not be "/".
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -169,17 +180,29 @@ in
       }];
     })
 
-    (lib.mkIf (cfg.domain != null) {
-      services.nginx.virtualHosts.${cfg.domain} = {
-        forceSSL = true;
-        enableACME = true;
-        locations =
-          if cfg.basePath == "/" || cfg.basePath == "" then {
-            "/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}"; };
-          } else {
-            "${cfg.basePath}/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}/"; };
+    (lib.mkIf (cfg.domain != null) (lib.mkMerge [
+      (lib.mkIf (cfg.webRoot != null) {
+        services.nginx.virtualHosts.${cfg.domain} = {
+          root = cfg.webRoot;
+          locations."/" = {
+            index = "index.html";
+            try_files = "$uri $uri/ =404";
           };
-      };
-    })
+        };
+      })
+
+      {
+        services.nginx.virtualHosts.${cfg.domain} = {
+          forceSSL = true;
+          enableACME = true;
+          locations =
+            if cfg.basePath == "/" || cfg.basePath == "" then {
+              "/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}"; };
+            } else {
+              "${cfg.basePath}/" = { proxyPass = "http://127.0.0.1:${toString cfg.port}/"; };
+            };
+        };
+      }
+    ]))
   ]);
 }
