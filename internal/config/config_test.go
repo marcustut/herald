@@ -328,3 +328,55 @@ func TestClient(t *testing.T) {
 		t.Fatal("expected decode error")
 	}
 }
+
+// The cloud section gates the hosted accounts surface; a disabled or absent
+// section must leave existing self-host configs untouched, and an enabled one
+// must be complete enough to mail a magic link.
+func TestCloudGate(t *testing.T) {
+	base := "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\"\n"
+
+	t.Run("absent is disabled", func(t *testing.T) {
+		g, err := LoadGateway(writeTemp(t, base))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g.Cloud.Enabled {
+			t.Fatal("cloud enabled without a [cloud] table")
+		}
+	})
+
+	t.Run("disabled with base_url is allowed", func(t *testing.T) {
+		g, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=false\nbase_url=\"https://cloud.example.com\"\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g.Cloud.Enabled {
+			t.Fatal("cloud.enabled = false but Enabled is true")
+		}
+	})
+
+	t.Run("enabled and complete", func(t *testing.T) {
+		g, err := LoadGateway(writeTemp(t, base+"[cloud]\nenabled=true\nbase_url=\"https://cloud.example.com\"\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"herald@example.com\"\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !g.Cloud.Enabled || g.Cloud.BaseURL != "https://cloud.example.com" {
+			t.Fatalf("cloud = %+v", g.Cloud)
+		}
+	})
+
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{"missing base_url", base + "[cloud]\nenabled=true\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"a@b\"\n"},
+		{"relative base_url", base + "[cloud]\nenabled=true\nbase_url=\"/cloud\"\n[smtp]\naddr=\"127.0.0.1:587\"\nfrom=\"a@b\"\n"},
+		{"missing smtp", base + "[cloud]\nenabled=true\nbase_url=\"https://cloud.example.com\"\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := LoadGateway(writeTemp(t, tt.body)); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}

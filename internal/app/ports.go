@@ -28,6 +28,102 @@ type Hasher interface {
 type IDGenerator interface {
 	NewEventID() domain.EventID
 	NewDeliveryID() domain.DeliveryID
+	NewAccountID() domain.AccountID
+	NewUserID() domain.UserID
+	NewTenantID() domain.TenantID
+}
+
+// MailMessage is one transactional email. The bodies are rendered by the use
+// case; the mailer owns addressing, MIME envelope and headers.
+type MailMessage struct {
+	To      string
+	Subject string
+	Text    string
+	HTML    string
+}
+
+// Mailer sends transactional mail. It is the single mail seam shared by the
+// delivery sinks and the hosted sign-in flow, so there is no second SMTP path.
+type Mailer interface {
+	SendMail(ctx context.Context, m MailMessage) error
+}
+
+// LoginLimiter throttles unauthenticated sign-in requests by an opaque key
+// (client IP or normalized email). Implementations must be safe for concurrent
+// use; a nil limiter means no limit.
+type LoginLimiter interface {
+	Allow(ctx context.Context, key string) (Decision, error)
+}
+
+// Identity is the account-scoped actor a session acts for. It is resolved from
+// stored rows, never from client input, so a caller cannot widen its scope.
+type Identity struct {
+	UserID    domain.UserID
+	AccountID domain.AccountID
+	Email     string
+	TenantID  domain.TenantID
+}
+
+// NewIdentityIDs are the candidate identifiers for the account, user and
+// default tenant created on first sign-in. The store uses them only when it
+// creates the rows.
+type NewIdentityIDs struct {
+	Account domain.AccountID
+	User    domain.UserID
+	Tenant  domain.TenantID
+}
+
+// IdentityStore provisions and removes the account/user/tenant rows behind an
+// identity. EnsureUser is idempotent by email: a returning address resolves to
+// its existing identity, never a second one.
+type IdentityStore interface {
+	EnsureUser(ctx context.Context, email string, ids NewIdentityIDs, now time.Time) (Identity, error)
+	// DeleteAccount removes the account and everything it owns; account, user,
+	// tenant, project, destination and session rows all cascade away.
+	DeleteAccount(ctx context.Context, account domain.AccountID) error
+}
+
+// SessionRecord is a stored browser session. Only the hashes of the cookie
+// value and the CSRF token are persisted; the raw values are shown once at
+// sign-in and never recoverable.
+type SessionRecord struct {
+	Hash      string
+	UserID    domain.UserID
+	AccountID domain.AccountID
+	TenantID  domain.TenantID
+	Email     string
+	CSRFHash  string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt time.Time
+}
+
+// SessionStore persists sessions and revokes them by token hash or account. A
+// lookup of an unknown, expired or revoked session reports ErrSessionNotFound.
+type SessionStore interface {
+	PutSession(ctx context.Context, s SessionRecord) error
+	SessionByHash(ctx context.Context, hash string, now time.Time) (SessionRecord, error)
+	RevokeSession(ctx context.Context, hash string, now time.Time) error
+	RevokeAccountSessions(ctx context.Context, account domain.AccountID, now time.Time) error
+}
+
+// LoginTokenRecord is a stored magic-link token. Only the hash is persisted;
+// Email is the normalized address the link was mailed to.
+type LoginTokenRecord struct {
+	Hash      string
+	Email     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	UsedAt    time.Time
+}
+
+// LoginTokenStore persists single-use magic-link tokens.
+type LoginTokenStore interface {
+	PutLoginToken(ctx context.Context, t LoginTokenRecord) error
+	// ConsumeLoginToken atomically marks an unused, unexpired token used and
+	// returns it. A consumed, expired or unknown token reports
+	// ErrLoginTokenNotFound, so a replayed link can never mint a second session.
+	ConsumeLoginToken(ctx context.Context, hash string, now time.Time) (LoginTokenRecord, error)
 }
 
 // Credential is a stored token. Only Hash is persisted; the raw token is shown

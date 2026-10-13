@@ -22,10 +22,13 @@ type migration struct {
 // original idempotent schema blob (create-if-not-exists plus the guarded
 // reports->events / report_id->event_id rename), so a fresh database, a legacy
 // reports database, and an already-migrated Event database all converge on the
-// same shape. Version 2 adds the durable ownership model.
+// same shape. Version 2 adds the durable ownership model. Version 3 adds the
+// hosted sign-in state: single-use magic-link tokens, browser sessions, and a
+// global uniqueness rule on user email.
 var migrations = []migration{
 	{version: 1, name: "baseline", sql: baselineSchema},
 	{version: 2, name: "ownership", sql: ownershipSchema},
+	{version: 3, name: "auth", sql: authSchema},
 }
 
 // ownershipSchema is migration version 2. It adds the account/user/tenant/
@@ -77,6 +80,38 @@ CREATE TABLE IF NOT EXISTS destinations (
 	FOREIGN KEY (tenant_id, project_id) REFERENCES projects(tenant_id, id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS destinations_project ON destinations (tenant_id, project_id);
+`
+
+// authSchema is migration version 3. It is purely additive: it adds the
+// magic-link and session tables the hosted sign-in flow needs and makes the
+// user email globally unique, so an address always resolves to one identity.
+// The ownership tables carried no rows before this migration (accounts/users
+// were staged by version 2), so the unique index cannot collide with existing
+// data. Sessions cascade away with the user or account they belong to, which
+// makes account deletion a full revocation.
+const authSchema = `
+CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email);
+
+CREATE TABLE IF NOT EXISTS login_tokens (
+	token_hash text PRIMARY KEY,
+	email      text NOT NULL,
+	created_at timestamptz NOT NULL,
+	expires_at timestamptz NOT NULL,
+	used_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS login_tokens_email ON login_tokens (email);
+
+CREATE TABLE IF NOT EXISTS sessions (
+	token_hash text PRIMARY KEY,
+	user_id    text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	tenant_id  text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+	csrf_hash  text NOT NULL,
+	created_at timestamptz NOT NULL,
+	expires_at timestamptz NOT NULL,
+	revoked_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
 `
 
 const schemaMigrationsDDL = `

@@ -25,4 +25,11 @@ var (
 	// ErrIdempotencyConflict signals that Save collided with an existing event
 	// for the same (tenant, idempotency key); the caller returns the original.
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
+	// ErrSessionNotFound is an internal signal from a SessionStore. The auth
+	// use case collapses it into ErrUnauthenticated so a caller cannot tell an
+	// expired session from an unknown one.
+	ErrSessionNotFound = errors.New("session not found")
+	// ErrLoginTokenNotFound is an internal signal from a LoginTokenStore for a
+	// magic-link token that is unknown, already used or expired.
+	ErrLoginTokenNotFound = errors.New("login token not found")
 )

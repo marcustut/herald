@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -82,6 +83,15 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		Logger:  logger,
 	}
 
+	if cfg.Cloud.Enabled {
+		if st.identities == nil {
+			fmt.Fprintln(stderr, "error: cloud.enabled requires a database (set --database-url or HERALD_DATABASE_URL)")
+			return 1
+		}
+		api.Cloud = cloudAPI(cfg, st, logger)
+		logger.Info("cloud auth enabled", "base_url", cfg.Cloud.BaseURL)
+	}
+
 	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -118,4 +128,35 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return 1
 	}
 	return 0
+}
+
+// cloudAPI composes the hosted sign-in surface: postgres-backed identities,
+// sessions and magic-link tokens, the shared SMTP mailer, and the in-memory
+// sign-in limiter. The session cookie is Secure whenever the configured public
+// origin is https.
+func cloudAPI(cfg config.Gateway, st stores, logger *slog.Logger) *httpapi.Cloud {
+	mailer := sink.NewMailer(sink.EmailConfig{
+		Addr:          cfg.SMTP.Addr,
+		From:          cfg.SMTP.From,
+		FromName:      cfg.SMTP.FromName,
+		Username:      os.Getenv("HERALD_SMTP_USERNAME"),
+		Password:      os.Getenv("HERALD_SMTP_PASSWORD"),
+		TLSServerName: cfg.SMTP.ServerName,
+	})
+	return &httpapi.Cloud{
+		Auth: app.Auth{
+			Identities: st.identities,
+			Tokens:     st.loginTokens,
+			Sessions:   st.sessions,
+			Mailer:     mailer,
+			Secrets:    secret.Generator{},
+			Hasher:     hash.SHA256{},
+			IDs:        id.Random{},
+			Clock:      systemClock{},
+			LinkBase:   cfg.Cloud.BaseURL,
+		},
+		Limiter:      memory.NewLoginLimiter(httpapi.DefaultAuthRequests, httpapi.DefaultAuthWindow, systemClock{}),
+		CookieSecure: strings.HasPrefix(cfg.Cloud.BaseURL, "https://"),
+		Logger:       logger,
+	}
 }

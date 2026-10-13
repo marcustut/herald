@@ -13,6 +13,11 @@ type stores struct {
 	credentials app.CredentialStore
 	events      app.EventStore
 	deliveries  app.DeliveryStore
+	// Hosted-auth stores are nil in dev/memory mode; the cloud surface requires
+	// a real database, so serve refuses to enable it without one.
+	identities  app.IdentityStore
+	sessions    app.SessionStore
+	loginTokens app.LoginTokenStore
 	close       func()
 }
 
@@ -40,6 +45,9 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		credentials: postgres.NewCredentials(pool),
 		events:      events,
 		deliveries:  events,
+		identities:  postgres.NewIdentities(pool),
+		sessions:    postgres.NewSessions(pool),
+		loginTokens: postgres.NewLoginTokens(pool),
 		close:       pool.Close,
 	}, nil
 }

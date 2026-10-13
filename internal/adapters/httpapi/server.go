@@ -37,6 +37,10 @@ type Server struct {
 	// GET /metrics; nil falls back to the metrics adapter's default registry.
 	Observer app.Observer
 	Metrics  http.Handler
+
+	// Cloud is the hosted account surface. Nil (the self-host default) means no
+	// cloud routes are registered, so those paths 404 as if absent.
+	Cloud *Cloud
 }
 
 func (s *Server) Handler() http.Handler {
@@ -47,6 +51,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
+	if s.Cloud != nil {
+		s.Cloud.register(mux)
+	}
 	return s.instrument(mux)
 }
 
