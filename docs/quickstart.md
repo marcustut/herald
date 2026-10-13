@@ -99,7 +99,7 @@ Install the skill so an agent emails you **only when you ask** ("notify me when
 you're done"), not on every task:
 
 ```sh
-herald skill > ~/.claude/skills/herald-notify/SKILL.md
+herald skill > ~/.claude/skills/herald/SKILL.md
 # or place it wherever your harness reads skills/AGENTS.md
 ```
 

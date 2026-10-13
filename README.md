@@ -104,7 +104,7 @@ each call creates a distinct event.
   me when it finishes") — not on every task. Any harness that can run a shell
   can use it ([docs/skill.md](docs/skill.md)):
   ```sh
-  herald skill > ~/.claude/skills/herald-notify/SKILL.md   # Claude Code
+  herald skill > ~/.claude/skills/herald/SKILL.md   # Claude Code
   # or place it wherever your harness reads skills / AGENTS.md
   ```
 - **MCP** — `herald mcp` for harnesses that prefer a structured tool

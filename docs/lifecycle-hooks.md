@@ -1,7 +1,7 @@
 # Coding-agent lifecycle hooks
 
 Herald normally learns that work finished because the *model* chose to call the
-`herald-notify` skill or the `send_event` MCP tool. That depends on the model
+`herald` skill or the `send_event` MCP tool. That depends on the model
 remembering an instruction. This integration is the deterministic alternative:
 the **harness** invokes a hook when the agent reaches a terminal state, so the
 notification does not rely on the model at all.

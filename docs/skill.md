@@ -1,7 +1,7 @@
 # Agent skill
 
 `herald skill` prints a ready-made [agent skill](../internal/skill/SKILL.md) —
-`herald-notify` — that teaches a coding agent to notify the owner by email when
+`herald` — that teaches a coding agent to notify the owner by email when
 work finishes. It is the shell-based integration: any harness that can run a
 command can install it.
 
@@ -36,7 +36,7 @@ deterministic [lifecycle hook](lifecycle-hooks.md) instead (or as well).
 Print the skill and place it where the harness reads skills:
 
 ```sh
-herald skill > ~/.claude/skills/herald-notify/SKILL.md   # Claude Code
+herald skill > ~/.claude/skills/herald/SKILL.md   # Claude Code
 ```
 
 For other harnesses, write the output to wherever that harness loads skills or

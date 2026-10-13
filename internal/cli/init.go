@@ -97,7 +97,7 @@ func printInitGuidance(w io.Writer, project string) {
 
 Install the agent skill so an agent can notify you when you ask it to:
 
-    herald skill > ~/.claude/skills/herald-notify/SKILL.md
+    herald skill > ~/.claude/skills/herald/SKILL.md
 
 Or register the MCP server, which exposes the send_event tool:
 

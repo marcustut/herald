@@ -1,5 +1,5 @@
 ---
-name: herald-notify
+name: herald
 description: Notify the owner by email that work is done, using the herald CLI. Invoke ONLY when the user has explicitly asked to be told about the outcome of a task — e.g. "notify me when you're done", "email me when it finishes", "let me know if it fails", "ping me when this is done", "send me a report when done". Do not invoke on ordinary task completion.
 ---
 
