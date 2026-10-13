@@ -102,14 +102,30 @@ each call creates a distinct event.
 - **Skill + CLI** — `herald skill` prints a SKILL.md that teaches an agent to
   notify **only when you explicitly ask** ("notify me when you're done", "email
   me when it finishes") — not on every task. Any harness that can run a shell
-  can use it:
+  can use it ([docs/skill.md](docs/skill.md)):
   ```sh
   herald skill > ~/.claude/skills/herald-notify/SKILL.md   # Claude Code
   # or place it wherever your harness reads skills / AGENTS.md
   ```
-- **MCP** — `herald mcp` for harnesses that prefer a structured tool.
+- **MCP** — `herald mcp` for harnesses that prefer a structured tool
+  ([docs/mcp.md](docs/mcp.md)).
 - **herdr plugin** — event-driven, hooks `pane.agent_status_changed` (issue #1);
   see [docs/herdr-plugin.md](docs/herdr-plugin.md).
+
+## Documentation
+
+- [docs/http-api.md](docs/http-api.md) — the canonical `POST /v1/events`
+  contract, error envelope, status codes, idempotency and rate-limit headers,
+  and the deprecated `/v1/reports` alias. Machine-readable copy:
+  [openapi.yaml](openapi.yaml) (OpenAPI 3.1).
+- [docs/cli.md](docs/cli.md) — `herald` commands, configuration, exit codes and
+  common gateway errors.
+- [docs/mcp.md](docs/mcp.md) — the `send_event` MCP tool and harness setup.
+- [docs/skill.md](docs/skill.md) — installing and using the agent skill.
+- [docs/architecture.md](docs/architecture.md) — layering, submit and delivery
+  flows.
+- [docs/self-hosting-docker.md](docs/self-hosting-docker.md) — run the stack
+  with Docker Compose.
 
 See [DECISIONS-AND-BLOCKERS.md](DECISIONS-AND-BLOCKERS.md).
 
