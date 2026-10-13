@@ -71,17 +71,18 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 
 /* ---- Hero: copy + animated visual ---- */
 .hero{display:grid;grid-template-columns:1.02fr .98fr;gap:3.5rem;align-items:center;padding-top:4.5rem;padding-bottom:5rem}
+.hero-copy{min-width:0}
 .hero-copy h1{font-size:clamp(2.3rem,5vw,3.6rem);max-width:20ch;margin:0 0 1.5rem}
 .hero-copy h1 em{font-style:italic;color:var(--accent-text)}
 .hero-copy .lead{font-size:1.0625rem;max-width:44ch;margin-bottom:2rem}
 .hero-copy .footnote{max-width:50ch;border-left:var(--radius-rule) solid var(--accent);padding-left:.9rem}
 
-.hero-visual{display:flex;flex-direction:column;font-family:var(--font-mono);font-size:.75rem;line-height:1.5}
-.term{border:var(--rule) solid var(--line-strong);border-radius:var(--radius-panel);background:var(--surface);overflow:hidden}
+.hero-visual{display:flex;flex-direction:column;font-family:var(--font-mono);font-size:.75rem;line-height:1.5;min-width:0}
+.term{border:var(--rule) solid var(--line-strong);border-radius:var(--radius-panel);background:var(--surface);overflow:hidden;min-width:0}
 .term-bar{display:flex;align-items:center;gap:.4rem;padding:.6rem .85rem;border-bottom:var(--rule) solid var(--line)}
 .term-bar span{width:9px;height:9px;border-radius:50%;background:var(--line-strong)}
 .term-bar em{margin-left:auto;font-style:normal;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-.term-body{padding:.85rem 1.05rem;display:flex;flex-direction:column;gap:.45rem;min-height:7.5rem}
+.term-body{padding:.85rem 1.05rem;display:flex;flex-direction:column;gap:.45rem;min-height:7.5rem;min-width:0}
 .line{margin:0;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prompt{white-space:nowrap}
 .sig{color:var(--accent)}
@@ -116,6 +117,16 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 @keyframes travel{0%,36%{top:0;opacity:0}40%{opacity:1}47%{top:100%;opacity:1}50%,100%{top:100%;opacity:0}}
 @keyframes mailin{0%,42%{opacity:0;transform:translateY(-10px)}52%,97%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px)}}
 @keyframes blink{0%{opacity:1}100%{opacity:.25}}
+
+/* ---- Install box ---- */
+.hero-install{grid-column:1 / -1;margin-top:.5rem;border-top:var(--rule) solid var(--line);padding-top:1.75rem}
+.install{margin:0 0 1.75rem}
+.install-label{font-size:.75rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 .6rem}
+.cmd{display:flex;align-items:center;gap:.7rem;font-family:var(--font-mono);font-size:.875rem;background:var(--surface);border:var(--rule) solid var(--line-strong);border-radius:var(--radius-card);padding:.9rem 1.1rem;overflow-x:auto;max-width:100%}
+.cmd .p{color:var(--accent);user-select:none}
+.cmd code{background:none;color:var(--fg);padding:0;font-size:1em;white-space:nowrap}
+.install-next{margin:.7rem 0 0}
+.install-next a{color:var(--accent-text);text-decoration:underline;text-underline-offset:3px}
 
 /* ---- Buttons ---- */
 .cta{display:flex;flex-wrap:wrap;gap:.75rem;margin:0 0 1.5rem}
@@ -159,7 +170,8 @@ code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);backg
 /* ---- Responsive ---- */
 @media (max-width:900px){
   .hero{grid-template-columns:1fr;gap:2.5rem}
-  .hero-copy h1{max-width:none}
+  .hero-copy{min-width:0}
+.hero-copy h1{max-width:none}
 }
 @media (max-width:760px){
   .grid-3{grid-template-columns:1fr}

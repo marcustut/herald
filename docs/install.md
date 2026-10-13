@@ -13,6 +13,16 @@ Supported targets for prebuilt binaries:
 There are no Windows builds. Version tags are `vMAJOR.MINOR.PATCH` (Herald is
 pre-1.0; see [releasing.md](releasing.md)).
 
+## One-line install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcustut/herald/main/install.sh | sh
+```
+
+Installs the latest release for your OS/architecture to `~/.local/bin`. Override
+the directory with `HERALD_INSTALL_DIR`, or pin a version with `HERALD_VERSION`.
+The script verifies the SHA256 checksum before installing.
+
 ## `go install`
 
 Requires the Go toolchain (see [`mise.toml`](../mise.toml), currently Go 1.27):
