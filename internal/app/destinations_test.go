@@ -10,40 +10,6 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-type projectKey struct {
-	tenant  domain.TenantID
-	project domain.ProjectID
-}
-
-type fakeProjects struct{ byKey map[projectKey]domain.Project }
-
-func newFakeProjects(ps ...domain.Project) *fakeProjects {
-	s := &fakeProjects{byKey: map[projectKey]domain.Project{}}
-	for _, p := range ps {
-		s.byKey[projectKey{p.TenantID, p.ID}] = p
-	}
-	return s
-}
-
-func (s *fakeProjects) PutProject(_ context.Context, p domain.Project) error {
-	s.byKey[projectKey{p.TenantID, p.ID}] = p
-	return nil
-}
-
-func (s *fakeProjects) Project(_ context.Context, tenant domain.TenantID, id domain.ProjectID) (domain.Project, bool, error) {
-	p, ok := s.byKey[projectKey{tenant, id}]
-	return p, ok, nil
-}
-
-func (s *fakeProjects) DeleteProject(_ context.Context, tenant domain.TenantID, id domain.ProjectID) error {
-	k := projectKey{tenant, id}
-	if _, ok := s.byKey[k]; !ok {
-		return ErrProjectNotFound
-	}
-	delete(s.byKey, k)
-	return nil
-}
-
 type fakeDestinationStore struct {
 	byID map[domain.DestinationID]domain.Destination
 }
@@ -133,10 +99,16 @@ func newDestinationsFixture(t *testing.T, projects ...domain.Project) *destinati
 	mail := &fakeMailer{}
 	store := newFakeDestinationStore()
 	tokens := newFakeDestVerifications()
+	projectsStore := newFakeProjectStore()
+	for _, p := range projects {
+		if err := projectsStore.PutProject(context.Background(), p); err != nil {
+			t.Fatalf("seed project: %v", err)
+		}
+	}
 	clock := &stepClock{t: testNow}
 	return &destinationsFixture{
 		uc: Destinations{
-			Projects: newFakeProjects(projects...),
+			Projects: projectsStore,
 			Store:    store,
 			Tokens:   tokens,
 			Mailer:   mail,

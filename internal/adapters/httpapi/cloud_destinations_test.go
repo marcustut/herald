@@ -17,39 +17,8 @@ import (
 )
 
 // --- in-memory ownership doubles (the httpapi tests are black-box, so the
-// package's own app fakes are not reachable) ---
-
-type memProjectKey struct {
-	tenant  domain.TenantID
-	project domain.ProjectID
-}
-
-type memProjects struct {
-	byKey map[memProjectKey]domain.Project
-}
-
-func newMemProjects() *memProjects { return &memProjects{byKey: map[memProjectKey]domain.Project{}} }
-
-func (s *memProjects) add(p domain.Project) { s.byKey[memProjectKey{p.TenantID, p.ID}] = p }
-
-func (s *memProjects) PutProject(_ context.Context, p domain.Project) error {
-	s.add(p)
-	return nil
-}
-
-func (s *memProjects) Project(_ context.Context, tenant domain.TenantID, id domain.ProjectID) (domain.Project, bool, error) {
-	p, ok := s.byKey[memProjectKey{tenant, id}]
-	return p, ok, nil
-}
-
-func (s *memProjects) DeleteProject(_ context.Context, tenant domain.TenantID, id domain.ProjectID) error {
-	k := memProjectKey{tenant, id}
-	if _, ok := s.byKey[k]; !ok {
-		return app.ErrProjectNotFound
-	}
-	delete(s.byKey, k)
-	return nil
-}
+// package's own app fakes are not reachable). Projects reuse the fakeProjects
+// store from cloud_projects_test.go ---
 
 type memDestinations struct {
 	byID map[domain.DestinationID]domain.Destination
@@ -129,7 +98,7 @@ func (s *memDestVerifications) ConsumeDestinationVerification(_ context.Context,
 
 type destFixture struct {
 	*cloudFixture
-	projects *memProjects
+	projects *fakeProjects
 	clock    *cloudClock
 }
 
@@ -148,7 +117,7 @@ func newDestFixture(t *testing.T) *destFixture {
 		LinkBase:   "https://cloud.example.com",
 	}
 	mail := auth.Mailer.(*cloudMailer)
-	projects := newMemProjects()
+	projects := newFakeProjects()
 	store := newMemDestinations()
 	tokens := newMemDestVerifications()
 	uc := &app.Destinations{
@@ -288,7 +257,7 @@ func TestDestinationRoutesAbsentWithoutUseCase(t *testing.T) {
 func TestCloudDestinationLifecycle(t *testing.T) {
 	f := newDestFixture(t)
 	csrf := f.signIn(t, "alice@example.com")
-	f.projects.add(testHTTPProject("alpha", f.tenantID(t)))
+	f.projects.PutProject(context.Background(), testHTTPProject("alpha", f.tenantID(t)))
 
 	create := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations",
 		`{"kind":"email","target":"Ops@Example.COM"}`, csrf)
@@ -361,7 +330,7 @@ func TestCloudDestinationRequiresSessionAndCSRF(t *testing.T) {
 		resp.Body.Close()
 	}
 	csrf := f.signIn(t, "alice@example.com")
-	f.projects.add(testHTTPProject("alpha", f.tenantID(t)))
+	f.projects.PutProject(context.Background(), testHTTPProject("alpha", f.tenantID(t)))
 	// Session, no CSRF.
 	if resp := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("no csrf = %d, want 403", resp.StatusCode)
@@ -387,7 +356,7 @@ func TestCloudDestinationOwnershipComesFromSession(t *testing.T) {
 	before := len(f.mail.msgs)
 	// Seed "alpha" under a different tenant. The session cannot address it,
 	// even though the slug matches.
-	f.projects.add(testHTTPProject("alpha", "ten_other"))
+	f.projects.PutProject(context.Background(), testHTTPProject("alpha", "ten_other"))
 
 	resp := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations",
 		`{"kind":"email","target":"ops@example.com"}`, csrf)
@@ -403,7 +372,7 @@ func TestCloudDestinationOwnershipComesFromSession(t *testing.T) {
 func TestCloudConfirmVerificationRejectsExpired(t *testing.T) {
 	f := newDestFixture(t)
 	csrf := f.signIn(t, "alice@example.com")
-	f.projects.add(testHTTPProject("alpha", f.tenantID(t)))
+	f.projects.PutProject(context.Background(), testHTTPProject("alpha", f.tenantID(t)))
 	create := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations",
 		`{"kind":"email","target":"ops@example.com"}`, csrf)
 	create.Body.Close()
