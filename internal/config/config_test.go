@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/marcustut/herald/internal/domain"
 )
 
 func writeTemp(t *testing.T, body string) string {
@@ -107,6 +110,86 @@ from_name = ""`, ""},
 			}
 			if g.SMTP.FromName != tt.want {
 				t.Fatalf("from_name = %q, want %q", g.SMTP.FromName, tt.want)
+			}
+		})
+	}
+}
+
+func TestLimitsDefaults(t *testing.T) {
+	g, err := LoadGateway(writeTemp(t, validGateway))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := g.EffectiveLimits()[domain.ProjectID("axis")]
+	want := struct {
+		requests int
+		window   time.Duration
+		daily    int
+		monthly  int
+	}{DefaultRequests, time.Minute, DefaultDaily, DefaultMonthly}
+	if got.Requests != want.requests || got.Window != want.window || got.Daily != want.daily || got.Monthly != want.monthly {
+		t.Fatalf("effective limits = %+v", got)
+	}
+}
+
+func TestLimitsGlobalAndProjectOverride(t *testing.T) {
+	body := `
+[server]
+addr = "127.0.0.1:8787"
+tenant = "owner"
+
+[limits]
+requests = 10
+window = "30s"
+daily = 500
+monthly = 9000
+
+[projects.axis]
+sinks = ["email"]
+
+[projects.axis.limits]
+requests = 99
+window = "2m"
+
+[projects.finance]
+sinks = ["email"]
+
+[sinks.email]
+kind = "email"
+recipient = "herald@example.com"
+`
+	g, err := LoadGateway(writeTemp(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := g.EffectiveLimits()
+
+	axis := limits[domain.ProjectID("axis")]
+	if axis.Requests != 99 || axis.Window != 2*time.Minute || axis.Daily != 500 || axis.Monthly != 9000 {
+		t.Fatalf("axis = %+v", axis)
+	}
+	finance := limits[domain.ProjectID("finance")]
+	if finance.Requests != 10 || finance.Window != 30*time.Second || finance.Daily != 500 || finance.Monthly != 9000 {
+		t.Fatalf("finance = %+v", finance)
+	}
+}
+
+func TestLimitsInvalid(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"bad window", "[limits]\nwindow=\"nope\""},
+		{"zero window", "[limits]\nwindow=\"0s\""},
+		{"negative requests", "[limits]\nrequests=-1"},
+		{"project bad window", "[projects.a.limits]\nwindow=\"x\""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := "[server]\naddr=\"x\"\ntenant=\"t\"\n" + tt.body +
+				"\n[projects.a]\nsinks=[\"e\"]\n[sinks.e]\nkind=\"email\"\nrecipient=\"a@b\"\n"
+			if _, err := LoadGateway(writeTemp(t, body)); err == nil {
+				t.Fatal("expected error")
 			}
 		})
 	}
