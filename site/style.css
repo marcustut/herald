@@ -1,203 +1,180 @@
-:root {
-  --bg: #ffffff;
-  --fg: #16181d;
-  --muted: #5a6270;
-  --line: #e2e5ea;
-  --card: #f6f7f9;
-  --accent: #146c43;
-  --accent-fg: #ffffff;
-  --term-bg: #14171c;
-  --term-fg: #d7dde6;
-}
+/* Herald landing page.
+   Visual language borrowed from the Axis design system: warm near-black ground,
+   a single warm-amber accent, Instrument Serif display type, DM Sans body and
+   JetBrains Mono for code. Fonts are self-hosted (no external requests) and the
+   document is script-free, per site_test.go. */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1115;
-    --fg: #e8ebf0;
-    --muted: #9aa3b2;
-    --line: #262b34;
-    --card: #171a20;
-    --accent: #2ea043;
-    --accent-fg: #06140a;
-    --term-bg: #0b0d11;
-    --term-fg: #d7dde6;
+/* ---- Type: self-hosted, latin subset ---- */
+@font-face{font-family:"Instrument Serif";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/instrument-serif-normal-400.woff2) format("woff2")}
+@font-face{font-family:"Instrument Serif";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/instrument-serif-italic-400.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/dm-sans-normal-400.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/jetbrains-mono-normal-400.woff2) format("woff2")}
+
+/* ---- Tokens (Axis v2) ---- */
+:root{
+  --bg:#0d0d0c; --surface:#141413; --surface-2:#1d1d1b;
+  --line:#242422; --line-strong:#2a2a27;
+  --fg:#edeae4; --muted:#8a8680;
+  --accent:#d4a843; --accent-fg:#0d0d0c; --accent-text:#d4a843;
+  --positive:#4ade80;
+  --rule:1px;
+  --radius-card:.75rem; --radius-panel:1.25rem; --radius-pill:9999px;
+  --font-display:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --font-sans:"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --measure:40rem; --wide:64rem;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --bg:#f4f1ea; --surface:#fbfaf6; --surface-2:#ffffff;
+    --line:#e4e0d7; --line-strong:#d4cfc3;
+    --fg:#1a1a18; --muted:#6b6862;
+    --accent:#d6b45a; --accent-fg:#0d0d0c; --accent-text:#7c6117;
+    --positive:#166534;
+    color-scheme:light;
   }
 }
 
-* { box-sizing: border-box; }
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:var(--font-sans);
+  font-size:15px;
+  line-height:1.6;
+  font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+img,svg{display:block}
+a{color:inherit;text-decoration:none}
+a:hover{color:var(--accent-text)}
 
-html { scroll-behavior: smooth; }
+.skip{
+  position:absolute;left:-999px;top:0;background:var(--accent);color:var(--accent-fg);
+  padding:.5rem .75rem;border-radius:var(--radius-card);z-index:100;
+}
+.skip:focus{left:1rem;top:1rem}
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+/* ---- Header ---- */
+.site-header{
+  position:sticky;top:0;z-index:10;
+  display:flex;align-items:center;justify-content:space-between;gap:1.5rem;
+  max-width:var(--wide);margin:0 auto;padding:1.1rem 1.5rem;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(8px);
+  border-bottom:var(--rule) solid var(--line);
+}
+.brand{display:inline-flex;align-items:center;gap:.55rem;font-family:var(--font-display);font-size:1.5rem;letter-spacing:.01em}
+.brand-mark{color:var(--accent)}
+.brand:hover .brand-mark{transform:rotate(45deg)}
+.brand-mark{transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.site-header nav{display:flex;gap:1.4rem;flex-wrap:wrap}
+.site-header nav a{font-size:.8125rem;color:var(--muted);letter-spacing:.01em}
+.site-header nav a:hover{color:var(--fg)}
+
+/* ---- Layout ---- */
+main{max-width:var(--wide);margin:0 auto;padding:0 1.5rem;position:relative;z-index:1}
+section{padding:4.5rem 0;border-top:var(--rule) solid var(--line)}
+section:first-of-type{border-top:0}
+h1,h2,h3{font-family:var(--font-display);font-weight:400;line-height:1.08;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:clamp(1.6rem,3.4vw,2rem);margin:0 0 1.25rem}
+h3{font-size:1.25rem;line-height:1.25;margin:0 0 .5rem}
+p{margin:0 0 1rem;max-width:var(--measure);text-wrap:pretty}
+strong{font-weight:600}
+code{font-family:var(--font-mono);font-size:.82em;color:var(--accent-text);background:color-mix(in srgb,var(--accent) 10%,transparent);padding:.12em .4em;border-radius:4px}
+.eyebrow{
+  font-size:.75rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);
+  margin:0 0 1.25rem;
+}
+.footnote,.note{color:var(--muted);font-size:.875rem}
+
+/* ---- Hero ---- */
+.hero{padding-top:5.5rem;padding-bottom:5rem}
+.hero h1{font-size:clamp(2.4rem,6.2vw,4.25rem);max-width:22ch;margin:0 0 1.5rem}
+.hero h1 em{font-style:italic;color:var(--accent-text)}
+.hero .lead{font-size:1.0625rem;color:var(--fg);max-width:46ch;margin-bottom:2rem}
+.hero .footnote{max-width:52ch;border-left:var(--radius-rule) solid var(--accent);padding-left:.9rem}
+
+/* ---- Buttons ---- */
+.cta{display:flex;flex-wrap:wrap;gap:.75rem;margin:0 0 1.5rem}
+.btn{
+  display:inline-flex;align-items:center;gap:.5rem;
+  padding:.7rem 1.1rem;border-radius:var(--radius-pill);
+  border:var(--rule) solid var(--line-strong);
+  font-size:.875rem;font-weight:500;transition:border-color .2s,background .2s,color .2s,transform .2s;
+}
+.btn:hover{border-color:var(--accent);color:var(--fg);transform:translateY(-1px)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn-primary:hover{background:color-mix(in srgb,var(--accent) 88%,#fff);color:var(--accent-fg);border-color:var(--accent)}
+
+/* ---- Grids: hairline tops, no card chrome ---- */
+.grid{display:grid;gap:2rem}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid article{border-top:var(--rule) solid var(--line-strong);padding-top:1.1rem}
+.grid article p{color:var(--muted)}
+.index{font-family:var(--font-mono);font-size:.75rem;color:var(--accent-text);letter-spacing:.1em;margin:0 0 .75rem}
+
+/* ---- Split ---- */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:3rem}
+.pane h2{margin-bottom:.75rem}
+#cloud h2{color:var(--accent-text)}
+
+/* ---- Terminal ---- */
+.terminal{
+  margin:1.75rem 0 1.25rem;border:var(--rule) solid var(--line-strong);
+  border-radius:var(--radius-panel);background:var(--surface);overflow:hidden;
+}
+.terminal figcaption{
+  font-family:var(--font-mono);font-size:.6875rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);padding:.6rem 1.1rem;border-bottom:var(--rule) solid var(--line);
+}
+.terminal pre{margin:0;padding:1.1rem 1.25rem;overflow-x:auto;font-family:var(--font-mono);font-size:.8125rem;line-height:1.7;color:var(--fg)}
+.terminal .c{color:var(--accent-text)}
+.terminal .ok{color:var(--positive)}
+.terminal .dim{color:var(--muted)}
+
+/* ---- Waitlist form ---- */
+form{max-width:var(--measure);margin-top:.5rem}
+form label{display:block;font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:.25rem 0 .4rem}
+input[type="email"]{
+  width:100%;padding:.7rem .85rem;background:var(--surface);color:var(--fg);
+  border:var(--rule) solid var(--line-strong);border-radius:var(--radius-card);
+  font-family:var(--font-sans);font-size:1rem;
+}
+input[type="email"]::placeholder{color:color-mix(in srgb,var(--muted) 80%,transparent)}
+input[type="email"]:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.consent{display:flex;align-items:flex-start;gap:.6rem;text-transform:none;letter-spacing:0;color:var(--fg);font-size:.875rem;margin:1rem 0 1.25rem}
+.consent input{margin-top:.25rem;accent-color:var(--accent)}
+
+/* ---- Privacy ---- */
+.privacy ul{list-style:none;margin:0;padding:0;display:grid;gap:1rem;max-width:var(--measure)}
+.privacy li{padding-left:1.1rem;border-left:var(--rule) solid var(--line-strong);color:var(--muted)}
+.privacy a{color:var(--accent-text);text-decoration:underline;text-underline-offset:3px}
+
+/* ---- Footer ---- */
+.site-footer{
+  max-width:var(--wide);margin:0 auto;padding:2.5rem 1.5rem 4rem;
+  border-top:var(--rule) solid var(--line);
+  display:flex;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;
+  font-size:.8125rem;color:var(--muted);
+}
+.site-footer nav{display:flex;gap:1.4rem;flex-wrap:wrap}
+.site-footer .motto{margin:0}
+
+/* ---- Responsive ---- */
+@media (max-width:760px){
+  .grid-3{grid-template-columns:1fr}
+  .split{grid-template-columns:1fr;gap:2.5rem}
+  .site-header{flex-direction:column;align-items:flex-start;gap:.75rem}
+  section{padding:3.25rem 0}
 }
 
-a { color: var(--accent); }
-a:hover { text-decoration: none; }
-
-code, pre {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.9em;
-}
-
-.skip {
-  position: absolute;
-  left: -9999px;
-}
-.skip:focus {
-  left: 1rem;
-  top: 1rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--accent);
-  color: var(--accent-fg);
-  border-radius: 6px;
-}
-
-.site-header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
-  align-items: center;
-  justify-content: space-between;
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.brand {
-  font-weight: 700;
-  text-decoration: none;
-  color: var(--fg);
-}
-.brand-mark { color: var(--accent); }
-
-.site-header nav a {
-  margin-left: 1rem;
-  text-decoration: none;
-  color: var(--muted);
-}
-.site-header nav a:hover { color: var(--fg); }
-
-main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 0 1.25rem;
-}
-
-section { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
-section:last-of-type { border-bottom: 0; }
-
-h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); line-height: 1.15; margin: 0.4rem 0 1rem; }
-h2 { font-size: 1.35rem; margin: 0 0 0.75rem; }
-h3 { font-size: 1rem; margin: 0 0 0.35rem; }
-
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin: 0;
-}
-
-.lead { font-size: 1.1rem; color: var(--muted); max-width: 46rem; }
-
-.cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1.5rem 0 0.75rem; }
-
-.btn {
-  display: inline-block;
-  padding: 0.55rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  text-decoration: none;
-  color: var(--fg);
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-}
-.btn:hover { border-color: var(--accent); }
-
-.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-}
-
-.note { color: var(--muted); font-size: 0.9rem; }
-
-.cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-}
-.cards li {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1rem 1.1rem;
-}
-.cards p { margin: 0; color: var(--muted); }
-
-.split {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-}
-
-.terminal {
-  background: var(--term-bg);
-  color: var(--term-fg);
-  padding: 1rem 1.1rem;
-  border-radius: 10px;
-  overflow-x: auto;
-  margin: 0 0 1rem;
-}
-.terminal code { white-space: pre; }
-
-.waitlist {
-  display: grid;
-  gap: 0.6rem;
-  max-width: 28rem;
-}
-.waitlist label { font-weight: 600; }
-.waitlist input[type="email"] {
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-.consent {
-  display: flex;
-  gap: 0.5rem;
-  font-weight: 400;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-.waitlist button { justify-self: start; }
-
-#privacy ul { color: var(--muted); padding-left: 1.1rem; }
-#privacy li { margin-bottom: 0.5rem; }
-
-.site-footer {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 1.5rem 1.25rem 2.5rem;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-.site-footer nav { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem; }
-.site-footer nav a { text-decoration: none; }
-.site-footer p { margin: 0; }
-
-@media (min-width: 40rem) {
-  .site-header nav a { margin-left: 1.25rem; }
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+  .btn:hover,.brand:hover .brand-mark{transform:none}
 }
