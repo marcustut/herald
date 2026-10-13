@@ -260,11 +260,30 @@ func TestOpenAPIDocumentsImplementedContract(t *testing.T) {
 		"openapi: 3.1.0",
 		"/v1/events:",
 		"/v1/reports:",
+		"/v1/auth/magic-link:",
+		"/v1/auth/callback:",
+		"/v1/auth/signout:",
+		"/v1/me:",
+		"/v1/account:",
+		"/v1/projects:",
+		"/v1/projects/{project}:",
+		"/v1/tokens:",
+		"/v1/tokens/{id}:",
+		"/v1/projects/{project}/token:",
+		"/v1/projects/{project}/token/rotate:",
+		"/v1/projects/{project}/destinations:",
+		"/v1/projects/{project}/destinations/{id}:",
+		"/v1/projects/{project}/destinations/{id}/verify:",
+		"/v1/destinations/verify:",
+		"/v1/deliveries:",
+		"/v1/email/events:",
 		"/healthz:",
 		"/readyz:",
 		"/metrics:",
 		`Deprecation`,
 		`successor-version`,
+		`herald_session`,
+		`X-CSRF-Token`,
 	} {
 		if !strings.Contains(spec, want) {
 			t.Errorf("openapi.yaml is missing %q", want)
@@ -278,6 +297,10 @@ func TestOpenAPIDocumentsImplementedContract(t *testing.T) {
 		"validation_failed",
 		"rate_limited",
 		"unavailable",
+		"csrf_failed",
+		"project_not_found",
+		"token_not_found",
+		"destination_not_found",
 	} {
 		if !strings.Contains(spec, code) {
 			t.Errorf("openapi.yaml is missing error code %q", code)

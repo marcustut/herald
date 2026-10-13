@@ -30,8 +30,10 @@ type fakeHasher struct{}
 func (fakeHasher) Hash(raw string) string { return "h:" + raw }
 
 type fakeStore struct {
-	byHash map[string]Credential
-	err    error
+	byHash   map[string]Credential
+	err      error
+	touchErr error
+	touches  int
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{byHash: map[string]Credential{}} }
@@ -53,6 +55,20 @@ func (s *fakeStore) ByHash(_ context.Context, hash string) (Credential, error) {
 		return Credential{}, ErrCredentialNotFound
 	}
 	return c, nil
+}
+
+func (s *fakeStore) TouchLastUsed(_ context.Context, hash string, now time.Time) error {
+	s.touches++
+	if s.touchErr != nil {
+		return s.touchErr
+	}
+	c, ok := s.byHash[hash]
+	if !ok {
+		return nil
+	}
+	c.LastUsedAt = now
+	s.byHash[hash] = c
+	return nil
 }
 
 func (s *fakeStore) ProjectCredential(_ context.Context, tenant domain.TenantID, project domain.ProjectID) (Credential, error) {

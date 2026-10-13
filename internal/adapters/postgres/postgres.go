@@ -193,6 +193,17 @@ func (s *Credentials) ByTenant(ctx context.Context, tenant domain.TenantID) ([]a
 	return out, rows.Err()
 }
 
+// TouchLastUsed records that the credential authenticated a request. It is a
+// single hash-keyed update; the caller throttles it, so a credential in active
+// use does not pay a write on every submit.
+func (s *Credentials) TouchLastUsed(ctx context.Context, hash string, now time.Time) error {
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE credentials SET last_used_at = $2 WHERE token_hash = $1`, hash, now); err != nil {
+		return fmt.Errorf("touch credential: %w", err)
+	}
+	return nil
+}
+
 func scanCredential(row pgx.Row) (app.Credential, error) {
 	var (
 		c          app.Credential

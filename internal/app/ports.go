@@ -194,6 +194,10 @@ type CredentialStore interface {
 	// ByTenant returns every credential issued to tenant, newest first. The
 	// list carries only stored metadata; a raw token is never recoverable.
 	ByTenant(ctx context.Context, tenant domain.TenantID) ([]Credential, error)
+	// TouchLastUsed stamps the credential's last-used time, keyed by its hash.
+	// It is best-effort telemetry: a caller must never fail a request on its
+	// error, and an unknown hash is not an error.
+	TouchLastUsed(ctx context.Context, hash string, now time.Time) error
 }
 
 // SinkDirectory resolves the sinks a project's events fan out to.

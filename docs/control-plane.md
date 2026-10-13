@@ -263,6 +263,7 @@ accepted but never provisioned or mailed, and existing accounts still sign in.
 
 Not part of this milestone and deliberately not built here: the remaining quota
 work (#35). The project/token self-service surface above is #30, the dashboard is
-#33 and `herald login` is #34. Token `last_used_at` is part of the metadata
-contract but is not yet written on authentication, so it currently always reads
-empty.
+#33 and `herald login` is #34. Token `last_used_at` is written when a report
+token authenticates a submit: the write is throttled to at most once per token
+per ten minutes and is strictly best-effort, so a failed telemetry write never
+fails the submit.

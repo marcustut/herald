@@ -67,6 +67,18 @@ func (s *Credentials) ByTenant(_ context.Context, tenant domain.TenantID) ([]app
 	return out, nil
 }
 
+func (s *Credentials) TouchLastUsed(_ context.Context, hash string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.byHash[hash]
+	if !ok {
+		return nil
+	}
+	c.LastUsedAt = now
+	s.byHash[hash] = c
+	return nil
+}
+
 var _ app.CredentialStore = (*Credentials)(nil)
 
 type eventKey struct {
