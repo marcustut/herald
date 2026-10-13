@@ -69,6 +69,7 @@ func TestSendJSONFromStdin(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("HERALD_GATEWAY", srv.URL)
+	t.Setenv("HERALD_TOKEN", "herald_axis_secret")
 
 	payload := `{"status":"failure","title":"boom","agent":"codex","idempotencyKey":"k1"}`
 	code, out, errOut := run(t, payload, "send", "--json")
@@ -87,6 +88,7 @@ func TestSendGatewayError(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("HERALD_GATEWAY", srv.URL)
+	t.Setenv("HERALD_TOKEN", "tok")
 
 	if code, _, _ := run(t, "", "send", "--status", "success", "--title", "t"); code != 1 {
 		t.Fatalf("code = %d", code)
