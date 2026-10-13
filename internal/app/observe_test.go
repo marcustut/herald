@@ -21,6 +21,8 @@ type captureObserver struct {
 	depths       []int
 	emailEvents  []string
 	suppressions []string
+	funnel       []string
+	activations  []time.Duration
 }
 
 func (o *captureObserver) ObserveHTTP(string, string, int, time.Duration) {}
@@ -34,10 +36,24 @@ func (o *captureObserver) ObserveEmailEvent(kind string)       { o.emailEvents =
 func (o *captureObserver) ObserveSuppression(reason string) {
 	o.suppressions = append(o.suppressions, reason)
 }
+func (o *captureObserver) ObserveFunnel(stage string) { o.funnel = append(o.funnel, stage) }
+func (o *captureObserver) ObserveActivation(took time.Duration) {
+	o.activations = append(o.activations, took)
+}
 
 type countingHeartbeat struct{ beats int }
 
 func (h *countingHeartbeat) Beat(time.Time) { h.beats++ }
+
+// fakeActivation returns a fixed first-delivery answer.
+type fakeActivation struct {
+	answer DeliveryActivation
+	err    error
+}
+
+func (f fakeActivation) Activation(context.Context, domain.TenantID) (DeliveryActivation, error) {
+	return f.answer, f.err
+}
 
 func TestObserverRecordsOutcomes(t *testing.T) {
 	events := newFakeEvents()
@@ -173,5 +189,68 @@ func TestRunDoesNotBeatOnClaimError(t *testing.T) {
 	_ = uc.Run(ctx, time.Hour)
 	if obs.polls != 0 || hb.beats != 0 {
 		t.Fatalf("polls=%d beats=%d, want 0 and 0", obs.polls, hb.beats)
+	}
+}
+
+// The first delivered event for an account records the first-delivery stage and
+// the account-created -> first-delivered setup time.
+func TestObserverRecordsFirstDeliveryFunnel(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
+	obs := &captureObserver{}
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
+	uc.Observer = obs
+	uc.Activation = fakeActivation{answer: DeliveryActivation{
+		Known: true, First: true, AccountCreatedAt: testNow.Add(-30 * time.Minute),
+	}}
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(obs.funnel) != 1 || obs.funnel[0] != string(FunnelFirstDelivered) {
+		t.Fatalf("funnel = %v, want [first_delivered]", obs.funnel)
+	}
+	if len(obs.activations) != 1 || obs.activations[0] != 30*time.Minute {
+		t.Fatalf("activations = %v, want [30m]", obs.activations)
+	}
+}
+
+// A later delivered event records repeat_send and no setup time.
+func TestObserverRecordsRepeatSendFunnel(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
+	obs := &captureObserver{}
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
+	uc.Observer = obs
+	uc.Activation = fakeActivation{answer: DeliveryActivation{Known: true, First: false, AccountCreatedAt: testNow}}
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(obs.funnel) != 1 || obs.funnel[0] != string(FunnelRepeatSend) {
+		t.Fatalf("funnel = %v, want [repeat_send]", obs.funnel)
+	}
+	if len(obs.activations) != 0 {
+		t.Fatalf("activations = %v, want none", obs.activations)
+	}
+}
+
+// A self-host tenant (no cloud account) records nothing.
+func TestObserverSkipsUnknownTenantFunnel(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
+	obs := &captureObserver{}
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
+	uc.Observer = obs
+	uc.Activation = fakeActivation{answer: DeliveryActivation{Known: false}}
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(obs.funnel) != 0 {
+		t.Fatalf("funnel = %v, want none", obs.funnel)
 	}
 }

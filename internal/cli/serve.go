@@ -109,6 +109,12 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	defer stop()
 
 	if *runDispatcher {
+		// The funnel activation hook is a cloud-only signal: a self-host
+		// tenant has no account, so wiring it would only add a wasted query.
+		var activation app.ActivationStore
+		if cfg.Cloud.Enabled {
+			activation = st.funnel
+		}
 		dispatcher := app.Dispatcher{
 			Deliveries:  st.deliveries,
 			Events:      st.events,
@@ -118,6 +124,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 			MaxAttempts: 8,
 			Backoff:     domain.Backoff{Base: time.Second, Cap: 5 * time.Minute},
 			Batch:       20,
+			Activation:  activation,
 			Logger:      logger,
 		}
 		go func() { _ = dispatcher.Run(runCtx, *interval) }()

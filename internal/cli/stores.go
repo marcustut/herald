@@ -36,7 +36,10 @@ type stores struct {
 	// (nil in dev/self-host mode), so the delivery guard is only applied when a
 	// database backs the hosted surface.
 	suppressions app.SuppressionStore
-	close        func()
+	// funnel derives the beta funnel's first-delivery signal from existing
+	// rows; nil in dev/memory mode.
+	funnel app.ActivationStore
+	close  func()
 }
 
 // dispatchSinks selects the dispatcher's sink source. A hosted deployment
@@ -85,6 +88,7 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		destVerifications: postgres.NewDestinationVerifications(pool),
 		sinkDirectory:     ownership,
 		suppressions:      postgres.NewSuppressions(pool),
+		funnel:            postgres.NewFunnel(pool),
 		close:             pool.Close,
 	}, nil
 }

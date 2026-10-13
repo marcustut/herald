@@ -29,6 +29,9 @@ type Dispatcher struct {
 	// Observer records delivery attempts and poll progress. Nil falls back to
 	// DefaultObserver.
 	Observer Observer
+	// Activation derives the beta funnel's first-delivery and setup-time signal
+	// from stored rows. Nil disables funnel sampling (a self-host deployment).
+	Activation ActivationStore
 	// Heartbeat is signalled after each successful poll so readiness can tell a
 	// stalled dispatcher from a live one. Nil disables the signal.
 	Heartbeat Heartbeat
@@ -87,7 +90,36 @@ func (d Dispatcher) process(ctx context.Context, del *domain.Delivery) error {
 	}
 	err = d.finish(ctx, del, now, deliveryErr, deliveryErr == nil)
 	d.observer().ObserveDelivery(del.SinkID, outcomeOf(del.State, deliveryErr), d.Clock.Now().Sub(start))
+	if err == nil && ok && del.State == domain.DeliveryDelivered {
+		d.observeFunnel(ctx, event.TenantID)
+	}
 	return err
+}
+
+// observeFunnel records the first-delivery and repeat-send stages and the
+// account-created -> first-delivered setup time. It derives the answer from
+// stored rows and writes nothing. Errors are ignored: the funnel is best-effort
+// telemetry and must never affect delivery.
+//
+// shortcut: with concurrent dispatchers two deliveries for one fresh account
+// can both read "not first", under-counting first_delivered; exact once-only
+// detection would need a persisted claim.
+func (d Dispatcher) observeFunnel(ctx context.Context, tenant domain.TenantID) {
+	if d.Activation == nil {
+		return
+	}
+	a, err := d.Activation.Activation(ctx, tenant)
+	if err != nil || !a.Known {
+		return
+	}
+	if a.First {
+		d.observer().ObserveFunnel(string(FunnelFirstDelivered))
+		if !a.AccountCreatedAt.IsZero() {
+			d.observer().ObserveActivation(d.Clock.Now().Sub(a.AccountCreatedAt))
+		}
+		return
+	}
+	d.observer().ObserveFunnel(string(FunnelRepeatSend))
 }
 
 // outcomeOf maps the terminal/retry state a delivery landed in to the bounded
