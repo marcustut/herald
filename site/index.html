@@ -35,12 +35,11 @@
       <h1>Your coding agents email you <em>when they finish.</em></h1>
       <p class="lead">
         Agents run in terminals, in CI, and on other machines — and you end up
-        checking each one to see if it's done. Herald gathers those updates and
-        emails you when a task finishes, fails, or gets stuck. One gateway for
-        every project, and no dashboards to babysit.
+        checking each one to see if it's done. Herald emails you when a task
+        finishes, fails, or gets stuck. One gateway for every project.
       </p>
 
-      <p class="footnote">Recipients are pinned server-side from the token — agents set no headers and cannot redirect mail.</p>
+      <p class="footnote">The token pins the recipient — agents can't redirect mail.</p>
     </div>
 
     <div class="hero-visual" role="img"
@@ -75,7 +74,7 @@
 
     <div class="hero-install">
       <p class="install-label">Install the CLI</p>
-      <p class="cmd"><span class="p" aria-hidden="true">$</span> <code>curl -fsSL https://raw.githubusercontent.com/marcustut/herald/main/install.sh | sh</code></p>
+      <p class="cmd"><span class="p" aria-hidden="true">$</span> <span class="cmd-code"><code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/marcustut/herald/main/install.sh | sh</code></span><button class="copy" type="button" data-copy="install-cmd">copy</button></p>
       <p class="install-next"><a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Then follow the quickstart →</a></p>
     </div>
   </section>
@@ -158,5 +157,33 @@ Subject: [herald] success · axis · herald-cli@build-01 — deploy finished</co
   </nav>
 </footer>
 
+<script>
+(function () {
+  var buttons = document.querySelectorAll("[data-copy]");
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].addEventListener("click", function () {
+      var btn = this;
+      var el = document.getElementById(btn.getAttribute("data-copy"));
+      var text = el ? el.textContent : "";
+      var done = function () {
+        btn.textContent = "copied";
+        btn.classList.add("is-done");
+        setTimeout(function () { btn.textContent = "copy"; btn.classList.remove("is-done"); }, 1500);
+      };
+      var fallback = function () {
+        var t = document.createElement("textarea");
+        t.value = text; t.setAttribute("readonly", "");
+        t.style.position = "fixed"; t.style.left = "-9999px";
+        document.body.appendChild(t); t.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(t); done();
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else { fallback(); }
+    });
+  }
+})();
+</script>
 </body>
 </html>
