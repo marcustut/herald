@@ -3,6 +3,7 @@ package memory
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -105,6 +106,7 @@ func (s *Events) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, pro
 func (s *Events) Claim(_ context.Context, now time.Time, lease time.Duration, limit int) ([]domain.Delivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.reclaimExpiredLocked(now)
 	var claimed []domain.Delivery
 	for i := range s.deliveries {
 		if limit > 0 && len(claimed) >= limit {
@@ -132,6 +134,84 @@ func (s *Events) Update(_ context.Context, del domain.Delivery) error {
 		}
 	}
 	return app.ErrDeliveryNotFound
+}
+
+func (s *Events) DeliveryByID(_ context.Context, id domain.DeliveryID) (domain.Delivery, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, d := range s.deliveries {
+		if d.ID == id {
+			return d, true, nil
+		}
+	}
+	return domain.Delivery{}, false, nil
+}
+
+func (s *Events) ListDeliveries(_ context.Context, f app.DeliveryFilter, limit int) ([]domain.Delivery, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []domain.Delivery
+	for _, d := range s.deliveries {
+		if !matches(f, d) {
+			continue
+		}
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *Events) Requeue(_ context.Context, f app.DeliveryFilter, now time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for i := range s.deliveries {
+		d := &s.deliveries[i]
+		if !matches(f, *d) {
+			continue
+		}
+		changed, err := d.Requeue(now)
+		if err != nil {
+			return n, err
+		}
+		if changed {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (s *Events) ReclaimExpired(_ context.Context, now time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reclaimExpiredLocked(now), nil
+}
+
+func (s *Events) reclaimExpiredLocked(now time.Time) int {
+	n := 0
+	for i := range s.deliveries {
+		d := &s.deliveries[i]
+		if d.LeaseExpired(now) {
+			_ = d.Reclaim(now)
+			n++
+		}
+	}
+	return n
+}
+
+func matches(f app.DeliveryFilter, d domain.Delivery) bool {
+	return (f.ID == "" || d.ID == f.ID) &&
+		(f.State == "" || d.State == f.State) &&
+		(f.EventID == "" || d.EventID == f.EventID) &&
+		(f.SinkID == "" || d.SinkID == f.SinkID)
 }
 
 // Deliveries returns a copy of the stored delivery rows.

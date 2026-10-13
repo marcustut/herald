@@ -314,6 +314,11 @@ func (s *Events) Claim(ctx context.Context, now time.Time, lease time.Duration, 
 	if limit <= 0 {
 		limit = 1
 	}
+	// Recover any worker that claimed a delivery and then died before it could
+	// record the outcome, so its lease does not strand the row forever.
+	if _, err := s.ReclaimExpired(ctx, now); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, claimQuery, now, now.Add(lease), limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim: %w", err)
@@ -329,6 +334,83 @@ func (s *Events) Claim(ctx context.Context, now time.Time, lease time.Duration, 
 		claimed = append(claimed, d)
 	}
 	return claimed, rows.Err()
+}
+
+const reclaimQuery = `
+UPDATE deliveries SET
+	state = 'pending', next_attempt_at = $1, lease_until = NULL, updated_at = $1
+WHERE state = 'inflight' AND lease_until IS NOT NULL AND lease_until <= $1`
+
+func (s *Events) ReclaimExpired(ctx context.Context, now time.Time) (int, error) {
+	tag, err := s.pool.Exec(ctx, reclaimQuery, now)
+	if err != nil {
+		return 0, fmt.Errorf("reclaim expired: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+const selectDelivery = `SELECT id, event_id, sink_id, state, attempts, next_attempt_at, lease_until, last_error, created_at, updated_at FROM deliveries`
+
+func (s *Events) DeliveryByID(ctx context.Context, id domain.DeliveryID) (domain.Delivery, bool, error) {
+	row := s.pool.QueryRow(ctx, selectDelivery+` WHERE id = $1`, string(id))
+	d, err := scanDelivery(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Delivery{}, false, nil
+	}
+	return d, err == nil, err
+}
+
+// LIMIT NULLIF($5, 0) lets a zero limit mean "no limit" (Postgres treats
+// LIMIT NULL as unlimited).
+const listDeliveryQuery = selectDelivery + `
+WHERE ($1 = '' OR id = $1)
+  AND ($2 = '' OR state = $2)
+  AND ($3 = '' OR event_id = $3)
+  AND ($4 = '' OR sink_id = $4)
+ORDER BY created_at DESC, id
+LIMIT NULLIF($5, 0)`
+
+func (s *Events) ListDeliveries(ctx context.Context, f app.DeliveryFilter, limit int) ([]domain.Delivery, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	rows, err := s.pool.Query(ctx, listDeliveryQuery,
+		string(f.ID), string(f.State), string(f.EventID), string(f.SinkID), limit)
+	if err != nil {
+		return nil, fmt.Errorf("list deliveries: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.Delivery
+	for rows.Next() {
+		d, err := scanDelivery(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// The outer filter is ANDed with the safety clause, so a delivered row can never
+// be selected and an inflight row is only picked up once its lease has expired.
+const requeueQuery = `
+UPDATE deliveries SET
+	state = 'pending', attempts = 0, next_attempt_at = $2, lease_until = NULL, last_error = '', updated_at = $2
+WHERE ($1 = '' OR id = $1)
+  AND ($3 = '' OR state = $3)
+  AND ($4 = '' OR event_id = $4)
+  AND ($5 = '' OR sink_id = $5)
+  AND (state IN ('dead', 'pending')
+       OR (state = 'inflight' AND lease_until IS NOT NULL AND lease_until <= $2))`
+
+func (s *Events) Requeue(ctx context.Context, f app.DeliveryFilter, now time.Time) (int, error) {
+	tag, err := s.pool.Exec(ctx, requeueQuery,
+		string(f.ID), now, string(f.State), string(f.EventID), string(f.SinkID))
+	if err != nil {
+		return 0, fmt.Errorf("requeue: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 func (s *Events) Update(ctx context.Context, d domain.Delivery) error {

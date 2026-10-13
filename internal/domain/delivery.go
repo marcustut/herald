@@ -106,6 +106,35 @@ func (d *Delivery) Reclaim(now time.Time) error {
 	return nil
 }
 
+// Requeue re-drives a dead or pending delivery for another attempt: it makes
+// the row due now and gives it a fresh attempt budget. It reports whether the
+// row changed.
+//
+// It is deliberately a no-op for a delivered row, so an operator redrive can
+// never duplicate a sink delivery that already succeeded, and for an inflight
+// row whose lease is still held, which a worker currently owns. An inflight row
+// whose lease has expired is revived like a dead one.
+func (d *Delivery) Requeue(now time.Time) (bool, error) {
+	switch d.State {
+	case DeliveryDelivered:
+		return false, nil
+	case DeliveryInflight:
+		if !d.LeaseExpired(now) {
+			return false, nil
+		}
+	case DeliveryDead, DeliveryPending:
+	default:
+		return false, fmt.Errorf("%w: requeue from %s", ErrInvalidTransition, d.State)
+	}
+	d.State = DeliveryPending
+	d.Attempts = 0
+	d.NextAttemptAt = now
+	d.LeaseUntil = time.Time{}
+	d.LastError = ""
+	d.UpdatedAt = now
+	return true, nil
+}
+
 func (d Delivery) LeaseExpired(now time.Time) bool {
 	return d.State == DeliveryInflight && !d.LeaseUntil.IsZero() && !now.Before(d.LeaseUntil)
 }
