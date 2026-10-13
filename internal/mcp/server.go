@@ -1,5 +1,5 @@
 // Package mcp implements a minimal Model Context Protocol server over stdio,
-// exposing a single send_report tool backed by the gateway client.
+// exposing a single send_event tool backed by the gateway client.
 package mcp
 
 import (
@@ -17,7 +17,7 @@ const defaultProtocolVersion = "2024-11-05"
 
 // Submitter is the gateway client the tool calls.
 type Submitter interface {
-	Submit(ctx context.Context, r client.Report) (string, error)
+	Submit(ctx context.Context, r client.Event) (string, error)
 }
 
 // Server serves MCP requests from In and writes responses to Out.
@@ -75,7 +75,7 @@ func (s *Server) handle(ctx context.Context, req request) (response, bool) {
 	case "ping":
 		return ok(req, map[string]any{}), !isNotification
 	case "tools/list":
-		return ok(req, map[string]any{"tools": []any{sendReportTool()}}), !isNotification
+		return ok(req, map[string]any{"tools": []any{sendEventTool()}}), !isNotification
 	case "tools/call":
 		result := s.callTool(ctx, req.Params)
 		return ok(req, result), !isNotification
@@ -95,7 +95,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return toolError("invalid tool arguments")
 	}
-	if params.Name != "send_report" {
+	if params.Name != "send_event" {
 		return toolError("unknown tool: " + params.Name)
 	}
 	var args struct {
@@ -118,7 +118,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 	if host == "" {
 		host = s.Host
 	}
-	id, err := s.Client.Submit(ctx, client.Report{
+	id, err := s.Client.Submit(ctx, client.Event{
 		Project:        s.Project,
 		Status:         args.Status,
 		Title:          args.Title,
@@ -131,13 +131,13 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 	if err != nil {
 		return toolError(err.Error())
 	}
-	return textResult("report accepted: " + id)
+	return textResult("event accepted: " + id)
 }
 
-func sendReportTool() map[string]any {
+func sendEventTool() map[string]any {
 	return map[string]any{
-		"name":        "send_report",
-		"description": "Send a finished-work report to the owner. Use when a task completes, fails, or is blocked.",
+		"name":        "send_event",
+		"description": "Send a finished-work event to the owner. Use when a task completes, fails, or is blocked.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -147,7 +147,7 @@ func sendReportTool() map[string]any {
 				"agent":          map[string]any{"type": "string", "description": "Agent name (defaults to the configured agent)"},
 				"host":           map[string]any{"type": "string", "description": "Machine the agent ran on"},
 				"links":          map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"label": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}}, "required": []string{"label", "url"}}},
-				"idempotencyKey": map[string]any{"type": "string", "description": "Stable key so a retry does not duplicate the report"},
+				"idempotencyKey": map[string]any{"type": "string", "description": "Stable key so a retry does not duplicate the event"},
 			},
 			"required": []string{"status", "title"},
 		},

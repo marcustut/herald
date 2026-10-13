@@ -39,18 +39,18 @@ func TestCredentials(t *testing.T) {
 	}
 }
 
-func TestReports(t *testing.T) {
+func TestEvents(t *testing.T) {
 	ctx := context.Background()
-	store := NewReports()
+	store := NewEvents()
 
-	rep := domain.Report{ID: "rep_1", TenantID: "ten_1", IdempotencyKey: "run-1"}
-	delivery := domain.Delivery{ID: "del_1", ReportID: "rep_1", SinkID: "email"}
+	rep := domain.Event{ID: "evt_1", TenantID: "ten_1", IdempotencyKey: "run-1"}
+	delivery := domain.Delivery{ID: "del_1", EventID: "evt_1", SinkID: "email"}
 	if err := store.Save(ctx, rep, []domain.Delivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
 	got, ok, err := store.ByIdempotencyKey(ctx, "ten_1", "run-1")
-	if err != nil || !ok || got.ID != "rep_1" {
+	if err != nil || !ok || got.ID != "evt_1" {
 		t.Fatalf("got %+v, ok %v, err %v", got, ok, err)
 	}
 	if _, ok, _ := store.ByIdempotencyKey(ctx, "ten_1", "other"); ok {
@@ -61,8 +61,8 @@ func TestReports(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 
-	if _, ok := store.Report("rep_1"); !ok {
-		t.Fatal("report not stored")
+	if _, ok := store.Event("evt_1"); !ok {
+		t.Fatal("event not stored")
 	}
 	if got := store.Deliveries(); len(got) != 1 || got[0].ID != "del_1" {
 		t.Fatalf("deliveries = %+v", got)

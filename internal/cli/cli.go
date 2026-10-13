@@ -17,7 +17,7 @@ import (
 
 const version = "0.1.0"
 
-const usage = `herald — agent report gateway
+const usage = `herald — agent event gateway
 
 Usage:
   herald serve [--config FILE] [--database-url URL] [--dev] [--dispatch] [--issue-token PROJECT]
@@ -98,8 +98,8 @@ func gatewayClient(configPath string) (client.Client, string, string, string, er
 	return client.Client{Gateway: gateway, Token: token}, project, os.Getenv("HERALD_AGENT"), os.Getenv("HERALD_HOST"), nil
 }
 
-// deriveKey produces a stable idempotency key from the report content so a
-// retry of the same report does not create a duplicate.
+// deriveKey produces a stable idempotency key from the event content so a
+// retry of the same event does not create a duplicate.
 func deriveKey(status, title, body string, links []client.Link) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\x00%s\x00%s", status, title, body)

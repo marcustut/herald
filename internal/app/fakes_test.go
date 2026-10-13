@@ -82,9 +82,9 @@ func (s *fakeSinks) EnabledSinks(context.Context, domain.TenantID, domain.Projec
 
 type fakeIDs struct{ n int }
 
-func (g *fakeIDs) NewReportID() domain.ReportID {
+func (g *fakeIDs) NewEventID() domain.EventID {
 	g.n++
-	return domain.ReportID(fmt.Sprintf("rep_%d", g.n))
+	return domain.EventID(fmt.Sprintf("evt_%d", g.n))
 }
 
 func (g *fakeIDs) NewDeliveryID() domain.DeliveryID {
@@ -92,31 +92,31 @@ func (g *fakeIDs) NewDeliveryID() domain.DeliveryID {
 	return domain.DeliveryID(fmt.Sprintf("del_%d", g.n))
 }
 
-type reportKey struct {
+type eventKey struct {
 	tenant domain.TenantID
 	key    domain.IdempotencyKey
 }
 
-type fakeReports struct {
-	byKey      map[reportKey]domain.Report
+type fakeEvents struct {
+	byKey      map[eventKey]domain.Event
 	deliveries []domain.Delivery
 	conflict   bool
 	lookupErr  error
 	saveErr    error
 }
 
-func newFakeReports() *fakeReports {
-	return &fakeReports{byKey: map[reportKey]domain.Report{}}
+func newFakeEvents() *fakeEvents {
+	return &fakeEvents{byKey: map[eventKey]domain.Event{}}
 }
 
-func (r *fakeReports) Save(_ context.Context, rep domain.Report, ds []domain.Delivery) error {
+func (r *fakeEvents) Save(_ context.Context, rep domain.Event, ds []domain.Delivery) error {
 	if r.saveErr != nil {
 		return r.saveErr
 	}
 	if r.conflict {
 		return ErrIdempotencyConflict
 	}
-	k := reportKey{rep.TenantID, rep.IdempotencyKey}
+	k := eventKey{rep.TenantID, rep.IdempotencyKey}
 	if _, ok := r.byKey[k]; ok {
 		return ErrIdempotencyConflict
 	}
@@ -125,24 +125,24 @@ func (r *fakeReports) Save(_ context.Context, rep domain.Report, ds []domain.Del
 	return nil
 }
 
-func (r *fakeReports) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Report, bool, error) {
+func (r *fakeEvents) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error) {
 	if r.lookupErr != nil {
-		return domain.Report{}, false, r.lookupErr
+		return domain.Event{}, false, r.lookupErr
 	}
-	rep, ok := r.byKey[reportKey{tenant, key}]
+	rep, ok := r.byKey[eventKey{tenant, key}]
 	return rep, ok, nil
 }
 
-func (r *fakeReports) ByID(_ context.Context, id domain.ReportID) (domain.Report, bool, error) {
+func (r *fakeEvents) ByID(_ context.Context, id domain.EventID) (domain.Event, bool, error) {
 	if r.lookupErr != nil {
-		return domain.Report{}, false, r.lookupErr
+		return domain.Event{}, false, r.lookupErr
 	}
 	for _, rep := range r.byKey {
 		if rep.ID == id {
 			return rep, true, nil
 		}
 	}
-	return domain.Report{}, false, nil
+	return domain.Event{}, false, nil
 }
 
 type fakeDeliveries struct {
@@ -202,12 +202,12 @@ type fakeSink struct {
 	id    domain.SinkID
 	err   error
 	calls int
-	got   domain.Report
+	got   domain.Event
 }
 
 func (s *fakeSink) ID() domain.SinkID { return s.id }
 
-func (s *fakeSink) Deliver(_ context.Context, r domain.Report) error {
+func (s *fakeSink) Deliver(_ context.Context, r domain.Event) error {
 	s.calls++
 	s.got = r
 	return s.err

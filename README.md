@@ -1,7 +1,7 @@
 # herald
 
 A small self-hosted gateway that lets coding agents (across all your projects)
-email you a report when they finish work. Agents POST over HTTPS; the gateway
+email you a notification when they finish work. Agents POST over HTTPS; the gateway
 authenticates the token, pins the destination, redacts secrets, then queues and
 delivers to one or more sinks (email via SMTP, or an outbound webhook).
 
@@ -12,7 +12,7 @@ headers and cannot redirect mail.
 
 ```
 agents / CLI / MCP / herdr plugin
-        │  HTTPS  POST /v1/reports   (Bearer token)
+        │  HTTPS  POST /v1/events    (Bearer token)
         ▼
    herald serve ── authn · redact · fan-out ──► PostgreSQL (queue + audit)
         │                                            │
@@ -73,9 +73,9 @@ echo '{"status":"failure","title":"build broke"}' | herald send --json
 |---|---|
 | `herald serve` | run the HTTP API |
 | `herald dispatch` | run the delivery-queue consumer (`--workers N`) |
-| `herald send` | submit a report from the CLI (also used by hooks/CI) |
+| `herald send` | submit an event from the CLI (also used by hooks/CI) |
 | `herald token create/revoke` | manage project and scoped credentials |
-| `herald mcp` | MCP server (stdio) exposing a `send_report` tool |
+| `herald mcp` | MCP server (stdio) exposing a `send_event` tool |
 | `herald skill` | print the agent SKILL.md for installation |
 
 ## Integration surfaces

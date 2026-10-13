@@ -8,7 +8,7 @@ import (
 const MaxIdempotencyKeyLen = 128
 
 // IdempotencyKey lets a producer retry an accepted request without creating a
-// duplicate report. The allowed alphabet is intentionally narrow so the key is
+// duplicate event. The allowed alphabet is intentionally narrow so the key is
 // safe to place in a URL, header and log line.
 type IdempotencyKey string
 

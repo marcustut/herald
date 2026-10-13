@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// Client posts reports to a gateway.
+// Client posts events to a gateway.
 type Client struct {
 	Gateway string
 	Token   string
@@ -24,9 +24,9 @@ type Link struct {
 	URL   string `json:"url"`
 }
 
-// Report is the caller-facing shape of a report. Project is required for scoped
+// Event is the caller-facing shape of a event. Project is required for scoped
 // tokens; for a project token it may be left empty.
-type Report struct {
+type Event struct {
 	Project        string
 	Status         string
 	Title          string
@@ -52,8 +52,8 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("gateway returned %d", e.StatusCode)
 }
 
-// Submit posts a report and returns its id.
-func (c *Client) Submit(ctx context.Context, r Report) (string, error) {
+// Submit posts a event and returns its id.
+func (c *Client) Submit(ctx context.Context, r Event) (string, error) {
 	body := map[string]any{
 		"status":         r.Status,
 		"title":          r.Title,
@@ -72,14 +72,14 @@ func (c *Client) Submit(ctx context.Context, r Report) (string, error) {
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("encode report: %w", err)
+		return "", fmt.Errorf("encode event: %w", err)
 	}
 
 	httpClient := c.HTTP
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.Gateway, "/")+"/v1/reports", bytes.NewReader(encoded))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.Gateway, "/")+"/v1/events", bytes.NewReader(encoded))
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -90,7 +90,7 @@ func (c *Client) Submit(ctx context.Context, r Report) (string, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("submit report: %w", err)
+		return "", fmt.Errorf("submit event: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))

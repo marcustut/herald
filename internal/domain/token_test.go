@@ -101,7 +101,7 @@ func TestTokenRoundTrip(t *testing.T) {
 func TestTokenZeroValue(t *testing.T) {
 	var tok Token
 	if !tok.IsZero() {
-		t.Fatal("zero token should report IsZero")
+		t.Fatal("zero token should event IsZero")
 	}
 }
 

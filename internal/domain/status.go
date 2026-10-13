@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Status is the outcome an agent reports. It is a closed set; parsing is
+// Status is the outcome an agent events. It is a closed set; parsing is
 // case-insensitive but the stored value is always canonical.
 type Status string
 
@@ -30,7 +30,7 @@ func ParseStatus(raw string) (Status, error) {
 	return s, nil
 }
 
-// Valid reports whether s is one of the three known statuses.
+// Valid events whether s is one of the three known statuses.
 func (s Status) Valid() bool {
 	_, ok := validStatus[s]
 	return ok

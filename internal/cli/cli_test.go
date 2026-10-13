@@ -42,7 +42,7 @@ func TestSend(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&got)
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"id":"rep_x"}`))
+		_, _ = w.Write([]byte(`{"id":"evt_x"}`))
 	}))
 	defer srv.Close()
 
@@ -54,7 +54,7 @@ func TestSend(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d err=%s", code, errOut)
 	}
-	if strings.TrimSpace(out) != "rep_x" {
+	if strings.TrimSpace(out) != "evt_x" {
 		t.Fatalf("out = %q", out)
 	}
 	if got.Project != "axis" || got.Status != "success" || got.Agent != "herald" {
@@ -65,7 +65,7 @@ func TestSend(t *testing.T) {
 func TestSendJSONFromStdin(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"id":"rep_json"}`))
+		_, _ = w.Write([]byte(`{"id":"evt_json"}`))
 	}))
 	defer srv.Close()
 	t.Setenv("HERALD_GATEWAY", srv.URL)
@@ -75,7 +75,7 @@ func TestSendJSONFromStdin(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d err=%s", code, errOut)
 	}
-	if strings.TrimSpace(out) != "rep_json" {
+	if strings.TrimSpace(out) != "evt_json" {
 		t.Fatalf("out = %q", out)
 	}
 }
@@ -111,18 +111,18 @@ func TestSendBadLink(t *testing.T) {
 func TestMCP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"id":"rep_mcp"}`))
+		_, _ = w.Write([]byte(`{"id":"evt_mcp"}`))
 	}))
 	defer srv.Close()
 	t.Setenv("HERALD_GATEWAY", srv.URL)
 	t.Setenv("HERALD_TOKEN", "tok")
 
-	in := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_report","arguments":{"status":"success","title":"done"}}}` + "\n"
+	in := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"done"}}}` + "\n"
 	code, out, errOut := run(t, in, "mcp")
 	if code != 0 {
 		t.Fatalf("code=%d err=%s", code, errOut)
 	}
-	if !strings.Contains(out, "rep_mcp") {
+	if !strings.Contains(out, "evt_mcp") {
 		t.Fatalf("out = %q", out)
 	}
 }

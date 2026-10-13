@@ -24,7 +24,7 @@ what still needs you before deployment. See `README.md` for usage.
 - **Redaction at ingest** (the DB holds the redacted copy).
 - **Token issuance** via `herald token …` against PostgreSQL (no HTTP
   provisioning endpoint).
-- **HTTP API:** `POST /v1/reports` → `202 {"id":…}`; error codes
+- **HTTP API:** `POST /v1/events` → `202 {"id":…}` (`POST /v1/reports` is a deprecated alias); error codes
   `unauthenticated` 401 / `invalid_json` 400 / `unsupported_media_type` 415 /
   `payload_too_large` 413 / `validation_failed` 422 / `unavailable` 503.
 
@@ -138,17 +138,17 @@ Today a reply lands in `herald@marcustut.me`'s mailbox on Stalwart and is
 ignored. To make Herald bidirectional:
 
 1. Send from a real readable mailbox (`herald@marcustut.me`) — already the plan
-   — with `Reply-To: herald+<report-id>@marcustut.me` (plus-addressing) and a
-   stable `Message-ID: <report-id@herald.marcustut.me>`.
+   — with `Reply-To: herald+<event-id>@marcustut.me` (plus-addressing) and a
+   stable `Message-ID: <event-id@herald.marcustut.me>`.
 2. Read the mailbox over **IMAP** (`imaps :993`), as the `herald` principal.
    Note: the box has **no JMAP listener**, so IMAP (or Stalwart's admin API) is
    the transport — not JMAP. That's a small change from the earlier "JMAP is
    nicer" note.
 3. Correlate a reply via `In-Reply-To`/`References` against the stored
-   `Message-ID`, with the plus-address as fallback → resolve to the report's
+   `Message-ID`, with the plus-address as fallback → resolve to the event's
    project + agent.
 4. Deliver to the owning agent:
-   - MCP tool `get_replies(reportId, since)` (poll-shaped), and/or
+   - MCP tool `get_replies(eventId, since)` (poll-shaped), and/or
    - an optional webhook push when the agent can receive one ("realtime").
 5. Security: inbound mail is untrusted — bound size/attachments, guard loops,
    and rely on the mailbox being local + single-owner (spoofing risk low but not

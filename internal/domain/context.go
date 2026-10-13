@@ -8,7 +8,7 @@ const (
 	MaxContextValueLen = 128
 )
 
-// Context is bounded, untrusted metadata attached to a report — for example the
+// Context is bounded, untrusted metadata attached to a event — for example the
 // host an agent ran on. Keys are validated so the pairs can be rendered and
 // logged safely; values are redacted like any other free text. Keys naming
 // fields that must originate from the credential are reserved and rejected,

@@ -21,42 +21,42 @@ func validSubmitRequest() SubmitRequest {
 	}
 }
 
-func newSubmit() (SubmitReport, *fakeReports, *fakeSinks) {
-	reports := newFakeReports()
+func newSubmit() (SubmitEvent, *fakeEvents, *fakeSinks) {
+	events := newFakeEvents()
 	sinks := &fakeSinks{sinks: []domain.SinkID{"email"}}
-	uc := SubmitReport{Reports: reports, Sinks: sinks, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
-	return uc, reports, sinks
+	uc := SubmitEvent{Events: events, Sinks: sinks, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
+	return uc, events, sinks
 }
 
 func TestSubmitHappyPath(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	id, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "rep_1" {
+	if id != "evt_1" {
 		t.Fatalf("id = %q", id)
 	}
-	rep, ok := reports.byKey[reportKey{"ten_1", "run-1"}]
+	rep, ok := events.byKey[eventKey{"ten_1", "run-1"}]
 	if !ok {
-		t.Fatal("report not saved")
+		t.Fatal("event not saved")
 	}
 	if rep.TenantID != "ten_1" || rep.ProjectID != "axis" || rep.AgentID != "herdr-build" {
-		t.Fatalf("report = %+v", rep)
+		t.Fatalf("event = %+v", rep)
 	}
-	if len(reports.deliveries) != 1 || reports.deliveries[0].SinkID != "email" || reports.deliveries[0].ReportID != "rep_1" {
-		t.Fatalf("deliveries = %+v", reports.deliveries)
+	if len(events.deliveries) != 1 || events.deliveries[0].SinkID != "email" || events.deliveries[0].EventID != "evt_1" {
+		t.Fatalf("deliveries = %+v", events.deliveries)
 	}
 }
 
 func TestSubmitRedactsBeforePersistence(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	req := validSubmitRequest()
 	req.Body = "password=hunter2"
 	if _, err := uc.Handle(context.Background(), submitter, req); err != nil {
 		t.Fatal(err)
 	}
-	rep := reports.byKey[reportKey{"ten_1", "run-1"}]
+	rep := events.byKey[eventKey{"ten_1", "run-1"}]
 	if strings.Contains(rep.Body, "hunter2") {
 		t.Fatalf("secret persisted: %q", rep.Body)
 	}
@@ -66,20 +66,20 @@ func TestSubmitRedactsBeforePersistence(t *testing.T) {
 }
 
 func TestSubmitWithLinks(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	req := validSubmitRequest()
 	req.Links = []LinkInput{{Label: "PR", URL: "https://github.com/x/y/pull/1"}}
 	if _, err := uc.Handle(context.Background(), submitter, req); err != nil {
 		t.Fatal(err)
 	}
-	rep := reports.byKey[reportKey{"ten_1", "run-1"}]
+	rep := events.byKey[eventKey{"ten_1", "run-1"}]
 	if len(rep.Links) != 1 || rep.Links[0].Label != "PR" {
 		t.Fatalf("links = %+v", rep.Links)
 	}
 }
 
 func TestSubmitIdempotentReplay(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	first, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -91,46 +91,46 @@ func TestSubmitIdempotentReplay(t *testing.T) {
 	if first != second {
 		t.Fatalf("first %q, second %q", first, second)
 	}
-	if len(reports.byKey) != 1 {
-		t.Fatalf("saved %d reports", len(reports.byKey))
+	if len(events.byKey) != 1 {
+		t.Fatalf("saved %d events", len(events.byKey))
 	}
-	if len(reports.deliveries) != 1 {
-		t.Fatalf("deliveries = %d, want no re-fan-out", len(reports.deliveries))
+	if len(events.deliveries) != 1 {
+		t.Fatalf("deliveries = %d, want no re-fan-out", len(events.deliveries))
 	}
 }
 
 func TestSubmitIdempotencyRace(t *testing.T) {
-	racing := &racingReports{existing: domain.Report{ID: "rep_existing"}}
-	uc := SubmitReport{Reports: racing, Sinks: &fakeSinks{sinks: []domain.SinkID{"email"}}, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
+	racing := &racingEvents{existing: domain.Event{ID: "evt_existing"}}
+	uc := SubmitEvent{Events: racing, Sinks: &fakeSinks{sinks: []domain.SinkID{"email"}}, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
 	id, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "rep_existing" {
+	if id != "evt_existing" {
 		t.Fatalf("id = %q", id)
 	}
 }
 
 func TestSubmitIdempotencyRaceLookupError(t *testing.T) {
 	boom := errors.New("lookup after conflict failed")
-	racing := &racingReports{lookupErr: boom}
-	uc := SubmitReport{Reports: racing, Sinks: &fakeSinks{sinks: []domain.SinkID{"email"}}, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
+	racing := &racingEvents{lookupErr: boom}
+	uc := SubmitEvent{Events: racing, Sinks: &fakeSinks{sinks: []domain.SinkID{"email"}}, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
 	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestSubmitNoSinks(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	uc.Sinks = &fakeSinks{}
 	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); err != nil {
 		t.Fatal(err)
 	}
-	if len(reports.deliveries) != 0 {
-		t.Fatalf("deliveries = %d", len(reports.deliveries))
+	if len(events.deliveries) != 0 {
+		t.Fatalf("deliveries = %d", len(events.deliveries))
 	}
-	if len(reports.byKey) != 1 {
-		t.Fatal("report not saved")
+	if len(events.byKey) != 1 {
+		t.Fatal("event not saved")
 	}
 }
 
@@ -148,13 +148,13 @@ func TestSubmitValidationErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc, reports, _ := newSubmit()
+			uc, events, _ := newSubmit()
 			req := validSubmitRequest()
 			tt.mutate(&req)
 			if _, err := uc.Handle(context.Background(), submitter, req); err == nil {
 				t.Fatal("expected error")
 			}
-			if len(reports.byKey) != 0 {
+			if len(events.byKey) != 0 {
 				t.Fatal("nothing should be saved")
 			}
 		})
@@ -162,56 +162,56 @@ func TestSubmitValidationErrors(t *testing.T) {
 }
 
 func TestSubmitSinkError(t *testing.T) {
-	uc, reports, sinks := newSubmit()
+	uc, events, sinks := newSubmit()
 	boom := errors.New("sink lookup failed")
 	sinks.err = boom
 	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
-	if len(reports.byKey) != 0 {
-		t.Fatal("report should not be saved")
+	if len(events.byKey) != 0 {
+		t.Fatal("event should not be saved")
 	}
 }
 
 func TestSubmitLookupError(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	boom := errors.New("store down")
-	reports.lookupErr = boom
+	events.lookupErr = boom
 	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestSubmitSaveError(t *testing.T) {
-	uc, reports, _ := newSubmit()
+	uc, events, _ := newSubmit()
 	boom := errors.New("write failed")
-	reports.saveErr = boom
+	events.saveErr = boom
 	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-type racingReports struct {
-	existing  domain.Report
+type racingEvents struct {
+	existing  domain.Event
 	saved     bool
 	lookupErr error
 }
 
-func (r *racingReports) ByIdempotencyKey(context.Context, domain.TenantID, domain.IdempotencyKey) (domain.Report, bool, error) {
+func (r *racingEvents) ByIdempotencyKey(context.Context, domain.TenantID, domain.IdempotencyKey) (domain.Event, bool, error) {
 	if !r.saved {
-		return domain.Report{}, false, nil
+		return domain.Event{}, false, nil
 	}
 	if r.lookupErr != nil {
-		return domain.Report{}, false, r.lookupErr
+		return domain.Event{}, false, r.lookupErr
 	}
 	return r.existing, true, nil
 }
 
-func (r *racingReports) Save(context.Context, domain.Report, []domain.Delivery) error {
+func (r *racingEvents) Save(context.Context, domain.Event, []domain.Delivery) error {
 	r.saved = true
 	return ErrIdempotencyConflict
 }
 
-func (r *racingReports) ByID(context.Context, domain.ReportID) (domain.Report, bool, error) {
-	return domain.Report{}, false, nil
+func (r *racingEvents) ByID(context.Context, domain.EventID) (domain.Event, bool, error) {
+	return domain.Event{}, false, nil
 }

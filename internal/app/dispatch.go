@@ -11,10 +11,10 @@ import (
 )
 
 // Dispatcher drains the delivery queue: it claims due deliveries, pushes each
-// report to its sink, and records success or schedules a retry.
+// event to its sink, and records success or schedules a retry.
 type Dispatcher struct {
 	Deliveries  DeliveryStore
-	Reports     ReportStore
+	Events      EventStore
 	Sinks       map[domain.SinkID]Sink
 	Clock       Clock
 	Lease       time.Duration
@@ -41,21 +41,21 @@ func (d Dispatcher) ProcessBatch(ctx context.Context) (int, error) {
 
 func (d Dispatcher) process(ctx context.Context, del *domain.Delivery) error {
 	now := d.Clock.Now()
-	report, ok, err := d.Reports.ByID(ctx, del.ReportID)
+	event, ok, err := d.Events.ByID(ctx, del.EventID)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return d.finish(ctx, del, now, Permanent(fmt.Errorf("report %q not found", del.ReportID)), false)
+		return d.finish(ctx, del, now, Permanent(fmt.Errorf("event %q not found", del.EventID)), false)
 	}
 	sink, ok := d.Sinks[del.SinkID]
 	if !ok {
 		return d.finish(ctx, del, now, Permanent(fmt.Errorf("unknown sink %q", del.SinkID)), false)
 	}
-	deliveryErr := sink.Deliver(ctx, report)
+	deliveryErr := sink.Deliver(ctx, event)
 	if deliveryErr != nil && d.Logger != nil {
 		d.Logger.Warn("delivery attempt failed",
-			"sink", del.SinkID, "report", del.ReportID, "attempts", del.Attempts, "error", deliveryErr)
+			"sink", del.SinkID, "event", del.EventID, "attempts", del.Attempts, "error", deliveryErr)
 	}
 	return d.finish(ctx, del, now, deliveryErr, deliveryErr == nil)
 }

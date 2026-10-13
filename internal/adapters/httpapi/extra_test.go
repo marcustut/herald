@@ -17,19 +17,19 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-type failingReports struct{ err error }
+type failingEvents struct{ err error }
 
-func (f failingReports) Save(context.Context, domain.Report, []domain.Delivery) error { return f.err }
-func (f failingReports) ByID(context.Context, domain.ReportID) (domain.Report, bool, error) {
-	return domain.Report{}, false, f.err
+func (f failingEvents) Save(context.Context, domain.Event, []domain.Delivery) error { return f.err }
+func (f failingEvents) ByID(context.Context, domain.EventID) (domain.Event, bool, error) {
+	return domain.Event{}, false, f.err
 }
-func (f failingReports) ByIdempotencyKey(context.Context, domain.TenantID, domain.IdempotencyKey) (domain.Report, bool, error) {
-	return domain.Report{}, false, f.err
+func (f failingEvents) ByIdempotencyKey(context.Context, domain.TenantID, domain.IdempotencyKey) (domain.Event, bool, error) {
+	return domain.Event{}, false, f.err
 }
 
 func postTo(t *testing.T, url, token, contentType, body string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, url+"/v1/reports", strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url+"/v1/events", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,11 +53,11 @@ func TestSubmitServerError(t *testing.T) {
 	raw, _ := issuer.IssueProjectToken(context.Background(), "ten_1", "axis")
 	api := &httpapi.Server{
 		Auth: app.Authenticator{Store: creds, Hasher: hash.SHA256{}},
-		Submit: app.SubmitReport{
-			Reports: failingReports{err: errors.New("db down")},
-			Sinks:   staticSinks{"email"},
-			IDs:     id.Random{},
-			Clock:   fixedClock{},
+		Submit: app.SubmitEvent{
+			Events: failingEvents{err: errors.New("db down")},
+			Sinks:  staticSinks{"email"},
+			IDs:    id.Random{},
+			Clock:  fixedClock{},
 		},
 	}
 	ts := httptest.NewServer(api.Handler())
@@ -129,5 +129,26 @@ func TestReadySuccess(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("readyz = %d", resp.StatusCode)
+	}
+}
+
+func TestLegacyReportsAlias(t *testing.T) {
+	h := newHarness(t)
+	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/v1/reports", strings.NewReader(validBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+h.token(t))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if resp.Header.Get("Deprecation") != "true" {
+		t.Fatal("missing Deprecation header on legacy alias")
 	}
 }

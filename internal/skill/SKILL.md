@@ -6,7 +6,7 @@ description: Notify the owner by email that work is done, using the herald CLI. 
 # Notify the owner when the work is done
 
 Use this only when the user explicitly asked to be notified. Then send **exactly
-one** report, with `herald send`, when the work reaches a terminal state.
+one** event, with `herald send`, when the work reaches a terminal state.
 
 ## When to send
 
@@ -40,12 +40,12 @@ JSON
 
 ## Rules
 
-- One report per terminal outcome. Do not stream progress.
+- One event per terminal outcome. Do not stream progress.
 - `--title` is required and should be short and specific.
 - Never paste secrets. The gateway redacts secret-looking strings, but do not
   rely on it.
 - Retries are safe: the CLI derives a stable idempotency key from the content,
-  so sending the same report twice does not duplicate it.
+  so sending the same event twice does not duplicate it.
 - Best-effort: if `herald send` fails, mention it briefly and carry on. Never
   let notifying block or fail the actual work.
 

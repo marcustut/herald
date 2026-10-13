@@ -85,7 +85,7 @@ type EmailConfig struct {
 	TLSServerName string
 }
 
-// Email renders a report to multipart/alternative and submits it over SMTP.
+// Email renders a event to multipart/alternative and submits it over SMTP.
 type Email struct {
 	sinkID    domain.SinkID
 	cfg       EmailConfig
@@ -112,7 +112,7 @@ func (e *Email) ID() domain.SinkID { return e.sinkID }
 
 var _ app.Sink = (*Email)(nil)
 
-func (e *Email) Deliver(_ context.Context, r domain.Report) error {
+func (e *Email) Deliver(_ context.Context, r domain.Event) error {
 	msg, err := e.buildMessage(r)
 	if err != nil {
 		return app.Permanent(fmt.Errorf("build message: %w", err))
@@ -127,8 +127,8 @@ func (e *Email) Deliver(_ context.Context, r domain.Report) error {
 	return nil
 }
 
-func (e *Email) buildMessage(r domain.Report) ([]byte, error) {
-	rendered, err := render.Report(r)
+func (e *Email) buildMessage(r domain.Event) ([]byte, error) {
+	rendered, err := render.Event(r)
 	if err != nil {
 		return nil, err
 	}

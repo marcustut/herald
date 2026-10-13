@@ -14,10 +14,10 @@ import (
 type fakeSubmitter struct {
 	id  string
 	err error
-	got client.Report
+	got client.Event
 }
 
-func (f *fakeSubmitter) Submit(_ context.Context, r client.Report) (string, error) {
+func (f *fakeSubmitter) Submit(_ context.Context, r client.Event) (string, error) {
 	f.got = r
 	return f.id, f.err
 }
@@ -27,12 +27,12 @@ func TestServe(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"send_report","arguments":{"status":"success","title":"done","idempotencyKey":"k"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"done","idempotencyKey":"k"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"bogus"}`,
 	}, "\n") + "\n")
 
 	var out bytes.Buffer
-	fake := &fakeSubmitter{id: "rep_9"}
+	fake := &fakeSubmitter{id: "evt_9"}
 	s := &Server{Project: "axis", Agent: "herdr", Host: "h1", Client: fake, In: in, Out: &out}
 	if err := s.Serve(context.Background()); err != nil {
 		t.Fatal(err)
@@ -45,10 +45,10 @@ func TestServe(t *testing.T) {
 	if !strings.Contains(lines[0], `"serverInfo"`) {
 		t.Fatalf("initialize response = %q", lines[0])
 	}
-	if !strings.Contains(lines[1], `"send_report"`) {
+	if !strings.Contains(lines[1], `"send_event"`) {
 		t.Fatalf("tools/list response = %q", lines[1])
 	}
-	if !strings.Contains(lines[2], "rep_9") {
+	if !strings.Contains(lines[2], "evt_9") {
 		t.Fatalf("tools/call response = %q", lines[2])
 	}
 	if fake.got.Project != "axis" || fake.got.Agent != "herdr" || fake.got.Host != "h1" {
@@ -57,7 +57,7 @@ func TestServe(t *testing.T) {
 }
 
 func TestServeToolError(t *testing.T) {
-	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_report","arguments":{"status":"success","title":"t"}}}` + "\n")
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"t"}}}` + "\n")
 	var out bytes.Buffer
 	s := &Server{Client: &fakeSubmitter{err: errors.New("gateway down")}, In: in, Out: &out}
 	if err := s.Serve(context.Background()); err != nil {

@@ -12,18 +12,18 @@ import (
 
 func TestDeliveryQueue(t *testing.T) {
 	ctx := context.Background()
-	store := NewReports()
+	store := NewEvents()
 	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
-	rep := domain.Report{ID: "rep_1", TenantID: "ten_1", IdempotencyKey: "k"}
-	if err := store.Save(ctx, rep, []domain.Delivery{domain.NewDelivery("del_1", "rep_1", "email", now)}); err != nil {
+	rep := domain.Event{ID: "evt_1", TenantID: "ten_1", IdempotencyKey: "k"}
+	if err := store.Save(ctx, rep, []domain.Delivery{domain.NewDelivery("del_1", "evt_1", "email", now)}); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, ok, err := store.ByID(ctx, "rep_1"); err != nil || !ok || got.ID != "rep_1" {
+	if got, ok, err := store.ByID(ctx, "evt_1"); err != nil || !ok || got.ID != "evt_1" {
 		t.Fatalf("ByID = %+v, %v, %v", got, ok, err)
 	}
 	if _, ok, _ := store.ByID(ctx, "missing"); ok {
-		t.Fatal("missing report resolved")
+		t.Fatal("missing event resolved")
 	}
 
 	claimed, err := store.Claim(ctx, now, time.Minute, 10)
@@ -55,11 +55,11 @@ func TestDeliveryQueue(t *testing.T) {
 
 func TestClaimRespectsDueTime(t *testing.T) {
 	ctx := context.Background()
-	store := NewReports()
+	store := NewEvents()
 	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
-	del := domain.NewDelivery("del_1", "rep_1", "email", now)
+	del := domain.NewDelivery("del_1", "evt_1", "email", now)
 	del.NextAttemptAt = now.Add(time.Hour)
-	if err := store.Save(ctx, domain.Report{ID: "rep_1", TenantID: "t", IdempotencyKey: "k"}, []domain.Delivery{del}); err != nil {
+	if err := store.Save(ctx, domain.Event{ID: "evt_1", TenantID: "t", IdempotencyKey: "k"}, []domain.Delivery{del}); err != nil {
 		t.Fatal(err)
 	}
 	if claimed, _ := store.Claim(ctx, now, time.Minute, 10); len(claimed) != 0 {

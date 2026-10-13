@@ -50,58 +50,58 @@ func (s *Credentials) ProjectCredential(_ context.Context, tenant domain.TenantI
 
 var _ app.CredentialStore = (*Credentials)(nil)
 
-type reportKey struct {
+type eventKey struct {
 	tenant domain.TenantID
 	key    domain.IdempotencyKey
 }
 
-// Reports is an in-memory app.ReportStore and app.DeliveryStore.
-type Reports struct {
+// Events is an in-memory app.EventStore and app.DeliveryStore.
+type Events struct {
 	mu         sync.RWMutex
-	reports    map[domain.ReportID]domain.Report
-	byKey      map[reportKey]domain.ReportID
+	events     map[domain.EventID]domain.Event
+	byKey      map[eventKey]domain.EventID
 	deliveries []domain.Delivery
 }
 
-func NewReports() *Reports {
-	return &Reports{
-		reports: map[domain.ReportID]domain.Report{},
-		byKey:   map[reportKey]domain.ReportID{},
+func NewEvents() *Events {
+	return &Events{
+		events: map[domain.EventID]domain.Event{},
+		byKey:  map[eventKey]domain.EventID{},
 	}
 }
 
-func (s *Reports) Save(_ context.Context, rep domain.Report, ds []domain.Delivery) error {
+func (s *Events) Save(_ context.Context, rep domain.Event, ds []domain.Delivery) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	k := reportKey{rep.TenantID, rep.IdempotencyKey}
+	k := eventKey{rep.TenantID, rep.IdempotencyKey}
 	if _, ok := s.byKey[k]; ok {
 		return app.ErrIdempotencyConflict
 	}
-	s.reports[rep.ID] = rep
+	s.events[rep.ID] = rep
 	s.byKey[k] = rep.ID
 	s.deliveries = append(s.deliveries, ds...)
 	return nil
 }
 
-func (s *Reports) ByID(_ context.Context, id domain.ReportID) (domain.Report, bool, error) {
+func (s *Events) ByID(_ context.Context, id domain.EventID) (domain.Event, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rep, ok := s.reports[id]
+	rep, ok := s.events[id]
 	return rep, ok, nil
 }
 
-func (s *Reports) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Report, bool, error) {
+func (s *Events) ByIdempotencyKey(_ context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	id, ok := s.byKey[reportKey{tenant, key}]
+	id, ok := s.byKey[eventKey{tenant, key}]
 	if !ok {
-		return domain.Report{}, false, nil
+		return domain.Event{}, false, nil
 	}
-	rep, ok := s.reports[id]
+	rep, ok := s.events[id]
 	return rep, ok, nil
 }
 
-func (s *Reports) Claim(_ context.Context, now time.Time, lease time.Duration, limit int) ([]domain.Delivery, error) {
+func (s *Events) Claim(_ context.Context, now time.Time, lease time.Duration, limit int) ([]domain.Delivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var claimed []domain.Delivery
@@ -121,7 +121,7 @@ func (s *Reports) Claim(_ context.Context, now time.Time, lease time.Duration, l
 	return claimed, nil
 }
 
-func (s *Reports) Update(_ context.Context, del domain.Delivery) error {
+func (s *Events) Update(_ context.Context, del domain.Delivery) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.deliveries {
@@ -134,21 +134,21 @@ func (s *Reports) Update(_ context.Context, del domain.Delivery) error {
 }
 
 // Deliveries returns a copy of the stored delivery rows.
-func (s *Reports) Deliveries() []domain.Delivery {
+func (s *Events) Deliveries() []domain.Delivery {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]domain.Delivery(nil), s.deliveries...)
 }
 
-// Report returns a stored report by id.
-func (s *Reports) Report(id domain.ReportID) (domain.Report, bool) {
+// Event returns a stored event by id.
+func (s *Events) Event(id domain.EventID) (domain.Event, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rep, ok := s.reports[id]
+	rep, ok := s.events[id]
 	return rep, ok
 }
 
 var (
-	_ app.ReportStore   = (*Reports)(nil)
-	_ app.DeliveryStore = (*Reports)(nil)
+	_ app.EventStore    = (*Events)(nil)
+	_ app.DeliveryStore = (*Events)(nil)
 )

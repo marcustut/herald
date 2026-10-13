@@ -8,9 +8,9 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-func sample() domain.Report {
-	return domain.Report{
-		ID:        "rep_1",
+func sample() domain.Event {
+	return domain.Event{
+		ID:        "evt_1",
 		TenantID:  "ten_1",
 		ProjectID: "axis",
 		AgentID:   "herdr-build",
@@ -23,8 +23,8 @@ func sample() domain.Report {
 	}
 }
 
-func TestReport(t *testing.T) {
-	got, err := Report(sample())
+func TestEvent(t *testing.T) {
+	got, err := Event(sample())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,11 @@ func TestReport(t *testing.T) {
 	}
 }
 
-func TestReportEscapesHTML(t *testing.T) {
+func TestEventEscapesHTML(t *testing.T) {
 	rep := sample()
 	rep.Title = `<script>alert(1)</script>`
 	rep.Body = `<img src=x onerror=alert(1)>`
-	got, err := Report(rep)
+	got, err := Event(rep)
 	if err != nil {
 		t.Fatal(err)
 	}

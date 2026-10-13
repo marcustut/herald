@@ -15,7 +15,7 @@ const (
 )
 
 // Delivery is one row of the durable queue: the attempt to push a single
-// Report to a single sink. Its state machine is the core scheduling logic and
+// Event to a single sink. Its state machine is the core scheduling logic and
 // is enforced here rather than in SQL.
 //
 //	pending --Claim--> inflight --Succeed--> delivered
@@ -25,7 +25,7 @@ const (
 //	                       +--Reclaim(lease expired)--> pending
 type Delivery struct {
 	ID            DeliveryID
-	ReportID      ReportID
+	EventID       EventID
 	SinkID        SinkID
 	State         DeliveryState
 	Attempts      int
@@ -36,10 +36,10 @@ type Delivery struct {
 	UpdatedAt     time.Time
 }
 
-func NewDelivery(id DeliveryID, reportID ReportID, sinkID SinkID, now time.Time) Delivery {
+func NewDelivery(id DeliveryID, eventID EventID, sinkID SinkID, now time.Time) Delivery {
 	return Delivery{
 		ID:            id,
-		ReportID:      reportID,
+		EventID:       eventID,
 		SinkID:        sinkID,
 		State:         DeliveryPending,
 		Attempts:      0,

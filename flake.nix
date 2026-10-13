@@ -1,5 +1,5 @@
 {
-  description = "herald — self-hosted agent report gateway";
+  description = "herald — self-hosted agent event gateway";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -18,7 +18,7 @@
           vendorHash = "sha256-7moMtarOGbrMEB8iWCtAiAZXPQxMojXLevg1jk54hog=";
           ldflags = [ "-s" "-w" ];
           meta = with pkgs.lib; {
-            description = "Self-hosted agent report gateway";
+            description = "Self-hosted agent event gateway";
             mainProgram = "herald";
             license = licenses.mit;
           };

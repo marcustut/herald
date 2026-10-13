@@ -42,8 +42,8 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	body := fs.String("body", "", "details")
 	agent := fs.String("agent", "", "agent name (defaults to HERALD_AGENT)")
 	host := fs.String("host", "", "machine (defaults to HERALD_HOST)")
-	key := fs.String("idempotency-key", "", "stable key (defaults to a hash of the report)")
-	asJSON := fs.Bool("json", false, "read a JSON report from stdin")
+	key := fs.String("idempotency-key", "", "stable key (defaults to a hash of the event)")
+	asJSON := fs.Bool("json", false, "read a JSON event from stdin")
 	var links linkFlags
 	fs.Var(&links, "link", "LABEL=URL (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -56,7 +56,7 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return 1
 	}
 
-	report := client.Report{
+	event := client.Event{
 		Project: project,
 		Status:  *status,
 		Title:   *title,
@@ -71,27 +71,27 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			fmt.Fprintln(stderr, "error: invalid JSON on stdin:", err)
 			return 1
 		}
-		report.Project = firstNonEmpty(payload.Project, project)
-		report.Status = payload.Status
-		report.Title = payload.Title
-		report.Body = payload.Body
-		report.Agent = firstNonEmpty(payload.Agent, report.Agent)
-		report.Links = payload.Links
+		event.Project = firstNonEmpty(payload.Project, project)
+		event.Status = payload.Status
+		event.Title = payload.Title
+		event.Body = payload.Body
+		event.Agent = firstNonEmpty(payload.Agent, event.Agent)
+		event.Links = payload.Links
 		if h, ok := payload.Context["host"]; ok {
-			report.Host = h
+			event.Host = h
 		}
-		report.IdempotencyKey = payload.IdempotencyKey
+		event.IdempotencyKey = payload.IdempotencyKey
 	}
-	if report.Agent == "" {
-		report.Agent = "herald"
+	if event.Agent == "" {
+		event.Agent = "herald"
 	}
-	if report.IdempotencyKey == "" {
-		report.IdempotencyKey = firstNonEmpty(*key, deriveKey(report.Status, report.Title, report.Body, report.Links))
+	if event.IdempotencyKey == "" {
+		event.IdempotencyKey = firstNonEmpty(*key, deriveKey(event.Status, event.Title, event.Body, event.Links))
 	} else {
-		report.IdempotencyKey = firstNonEmpty(*key, report.IdempotencyKey)
+		event.IdempotencyKey = firstNonEmpty(*key, event.IdempotencyKey)
 	}
 
-	id, err := cl.Submit(ctx, report)
+	id, err := cl.Submit(ctx, event)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1

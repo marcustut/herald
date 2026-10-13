@@ -11,7 +11,7 @@ const (
 	MaxLinkURLLen   = 2048
 )
 
-// Link is a labelled reference attached to a report. Only absolute http/https
+// Link is a labelled reference attached to a event. Only absolute http/https
 // URLs are accepted, which is what keeps javascript:, data: and protocol
 // relative URLs out of rendered output.
 type Link struct {

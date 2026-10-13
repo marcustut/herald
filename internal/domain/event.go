@@ -12,12 +12,12 @@ const (
 	MaxLinks    = 20
 )
 
-// Report is the aggregate root: an accepted agent report, equivalent to the
+// Event is the aggregate root: an accepted agent event, equivalent to the
 // "event" in the queue model. It is immutable once constructed; the persisted
 // row is the audit record. Body is untrusted free text and is stored as-is;
 // Redact produces the safe copy used for storage/rendering.
-type Report struct {
-	ID             ReportID
+type Event struct {
+	ID             EventID
 	TenantID       TenantID
 	ProjectID      ProjectID
 	AgentID        AgentID
@@ -30,11 +30,11 @@ type Report struct {
 	CreatedAt      time.Time
 }
 
-// NewReportInput carries everything needed to construct a Report. IDs and the
+// NewEventInput carries everything needed to construct a Event. IDs and the
 // clock are supplied by the caller (application layer), keeping the domain free
 // of infrastructure concerns.
-type NewReportInput struct {
-	ID             ReportID
+type NewEventInput struct {
+	ID             EventID
 	TenantID       TenantID
 	ProjectID      ProjectID
 	AgentID        AgentID
@@ -47,46 +47,46 @@ type NewReportInput struct {
 	CreatedAt      time.Time
 }
 
-func NewReport(in NewReportInput) (Report, error) {
+func NewEvent(in NewEventInput) (Event, error) {
 	switch {
 	case !validID(string(in.ID)):
-		return Report{}, fmt.Errorf("%w: report id", ErrInvalidReport)
+		return Event{}, fmt.Errorf("%w: event id", ErrInvalidEvent)
 	case !validID(string(in.TenantID)):
-		return Report{}, fmt.Errorf("%w: tenant id", ErrInvalidReport)
+		return Event{}, fmt.Errorf("%w: tenant id", ErrInvalidEvent)
 	case !validSlug(string(in.ProjectID)):
-		return Report{}, fmt.Errorf("%w: project id", ErrInvalidReport)
+		return Event{}, fmt.Errorf("%w: project id", ErrInvalidEvent)
 	}
 	if !in.Status.Valid() {
-		return Report{}, fmt.Errorf("%w: %q", ErrInvalidStatus, in.Status)
+		return Event{}, fmt.Errorf("%w: %q", ErrInvalidStatus, in.Status)
 	}
 	if !in.AgentID.Valid() {
-		return Report{}, fmt.Errorf("%w: %q", ErrInvalidAgent, in.AgentID)
+		return Event{}, fmt.Errorf("%w: %q", ErrInvalidAgent, in.AgentID)
 	}
 	ctx, err := NewContext(in.Context)
 	if err != nil {
-		return Report{}, err
+		return Event{}, err
 	}
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
-		return Report{}, ErrTitleRequired
+		return Event{}, ErrTitleRequired
 	}
 	if len(title) > MaxTitleLen {
-		return Report{}, fmt.Errorf("%w: %d > %d", ErrTitleTooLong, len(title), MaxTitleLen)
+		return Event{}, fmt.Errorf("%w: %d > %d", ErrTitleTooLong, len(title), MaxTitleLen)
 	}
 	if len(in.Body) > MaxBodyLen {
-		return Report{}, fmt.Errorf("%w: %d > %d", ErrBodyTooLong, len(in.Body), MaxBodyLen)
+		return Event{}, fmt.Errorf("%w: %d > %d", ErrBodyTooLong, len(in.Body), MaxBodyLen)
 	}
 	if len(in.Links) > MaxLinks {
-		return Report{}, fmt.Errorf("%w: %d > %d", ErrTooManyLinks, len(in.Links), MaxLinks)
+		return Event{}, fmt.Errorf("%w: %d > %d", ErrTooManyLinks, len(in.Links), MaxLinks)
 	}
 	if strings.TrimSpace(string(in.IdempotencyKey)) == "" {
-		return Report{}, fmt.Errorf("%w: empty", ErrInvalidIdempotencyKey)
+		return Event{}, fmt.Errorf("%w: empty", ErrInvalidIdempotencyKey)
 	}
 	if in.CreatedAt.IsZero() {
-		return Report{}, fmt.Errorf("%w: created at", ErrInvalidReport)
+		return Event{}, fmt.Errorf("%w: created at", ErrInvalidEvent)
 	}
 	links := append([]Link(nil), in.Links...)
-	return Report{
+	return Event{
 		ID:             in.ID,
 		TenantID:       in.TenantID,
 		ProjectID:      in.ProjectID,
@@ -103,7 +103,7 @@ func NewReport(in NewReportInput) (Report, error) {
 
 // Redact returns a copy with secret-looking strings stripped from the
 // free-text fields. The receiver is unchanged.
-func (r Report) Redact() Report {
+func (r Event) Redact() Event {
 	out := r
 	out.Title = Redact(out.Title)
 	out.Body = Redact(out.Body)

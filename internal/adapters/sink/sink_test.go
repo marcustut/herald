@@ -1,15 +1,19 @@
 package sink
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/mail"
 	"net/smtp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,9 +22,9 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-func sampleReport() domain.Report {
-	return domain.Report{
-		ID:             "rep_1",
+func sampleEvent() domain.Event {
+	return domain.Event{
+		ID:             "evt_1",
 		TenantID:       "ten_1",
 		ProjectID:      "axis",
 		AgentID:        "herdr-build",
@@ -51,7 +55,7 @@ func TestEmailDeliver(t *testing.T) {
 	ft := &fakeTransport{}
 	s := NewEmail("email", EmailConfig{Addr: "127.0.0.1:587", From: "herald@x", Recipient: "me@x"}).WithTransport(ft)
 
-	if err := s.Deliver(context.Background(), sampleReport()); err != nil {
+	if err := s.Deliver(context.Background(), sampleEvent()); err != nil {
 		t.Fatal(err)
 	}
 	if ft.addr != "127.0.0.1:587" || ft.from != "herald@x" {
@@ -71,7 +75,7 @@ func TestEmailDeliver(t *testing.T) {
 
 func TestEmailMessageIsParseable(t *testing.T) {
 	s := NewEmail("email", EmailConfig{From: "herald@x", Recipient: "me@x"})
-	msg, err := s.buildMessage(sampleReport())
+	msg, err := s.buildMessage(sampleEvent())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +93,7 @@ func TestEmailMessageIsParseable(t *testing.T) {
 }
 
 func TestEmailBuildMessageEscapesHTML(t *testing.T) {
-	rep := sampleReport()
+	rep := sampleEvent()
 	rep.Body = "<script>alert(1)</script>"
 	s := NewEmail("email", EmailConfig{From: "h@x", Recipient: "m@x"})
 	msg, err := s.buildMessage(rep)
@@ -105,7 +109,7 @@ func TestEmailBuildMessageEscapesHTML(t *testing.T) {
 func TestEmailTransportErrorIsRetryable(t *testing.T) {
 	ft := &fakeTransport{err: errors.New("connection refused")}
 	s := NewEmail("email", EmailConfig{From: "h@x", Recipient: "m@x"}).WithTransport(ft)
-	err := s.Deliver(context.Background(), sampleReport())
+	err := s.Deliver(context.Background(), sampleEvent())
 	if err == nil || app.IsPermanent(err) {
 		t.Fatalf("err = %v", err)
 	}
@@ -132,7 +136,7 @@ func TestWebhookDeliver(t *testing.T) {
 	defer srv.Close()
 
 	w := NewWebhook("slack", srv.URL, srv.Client())
-	if err := w.Deliver(context.Background(), sampleReport()); err != nil {
+	if err := w.Deliver(context.Background(), sampleEvent()); err != nil {
 		t.Fatal(err)
 	}
 	if got.Status != "success" || got.Agent != "herdr-build" || got.Host != "build-01" {
@@ -161,7 +165,7 @@ func TestWebhookStatusClassification(t *testing.T) {
 			}))
 			defer srv.Close()
 			w := NewWebhook("h", srv.URL, srv.Client())
-			err := w.Deliver(context.Background(), sampleReport())
+			err := w.Deliver(context.Background(), sampleEvent())
 			if tt.code < 300 {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -177,7 +181,7 @@ func TestWebhookStatusClassification(t *testing.T) {
 
 func TestWebhookBadURLIsPermanent(t *testing.T) {
 	w := NewWebhook("h", "://bad url", nil)
-	if err := w.Deliver(context.Background(), sampleReport()); !app.IsPermanent(err) {
+	if err := w.Deliver(context.Background(), sampleEvent()); !app.IsPermanent(err) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -240,7 +244,7 @@ func TestNoop(t *testing.T) {
 	if n.ID() != "noop" {
 		t.Fatal("bad id")
 	}
-	if err := n.Deliver(context.Background(), sampleReport()); err != nil {
+	if err := n.Deliver(context.Background(), sampleEvent()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -248,7 +252,116 @@ func TestNoop(t *testing.T) {
 func TestEmailWithAuth(t *testing.T) {
 	// A username triggers PlainAuth construction; exercise that branch.
 	s := NewEmail("email", EmailConfig{Addr: "smtp.x:587", From: "h@x", Recipient: "m@x", Username: "u", Password: "p"}).WithTransport(&fakeTransport{})
-	if err := s.Deliver(context.Background(), sampleReport()); err != nil {
+	if err := s.Deliver(context.Background(), sampleEvent()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// fakeSMTP speaks just enough SMTP (no STARTTLS, AUTH PLAIN) to exercise the
+// real smtpTransport end to end.
+type fakeSMTP struct {
+	mu   sync.Mutex
+	body string
+	to   []string
+}
+
+func (f *fakeSMTP) Body() string { f.mu.Lock(); defer f.mu.Unlock(); return f.body }
+func (f *fakeSMTP) To() []string { f.mu.Lock(); defer f.mu.Unlock(); return f.to }
+
+func startFakeSMTP(t *testing.T) (string, *fakeSMTP) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	fake := &fakeSMTP{}
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		r := bufio.NewReader(conn)
+		say := func(s string) { _, _ = fmt.Fprintf(conn, "%s\r\n", s) }
+		say("220 test ESMTP")
+		inData := false
+		var data strings.Builder
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				return
+			}
+			line = strings.TrimRight(line, "\r\n")
+			if inData {
+				if line == "." {
+					inData = false
+					fake.mu.Lock()
+					fake.body = data.String()
+					fake.mu.Unlock()
+					say("250 ok")
+					continue
+				}
+				data.WriteString(line + "\n")
+				continue
+			}
+			up := strings.ToUpper(line)
+			switch {
+			case strings.HasPrefix(up, "EHLO"):
+				say("250-test")
+				say("250 AUTH PLAIN")
+			case strings.HasPrefix(up, "HELO"):
+				say("250 test")
+			case strings.HasPrefix(up, "AUTH"):
+				say("235 ok")
+			case strings.HasPrefix(up, "MAIL FROM"):
+				say("250 ok")
+			case strings.HasPrefix(up, "RCPT TO"):
+				fake.mu.Lock()
+				fake.to = append(fake.to, line)
+				fake.mu.Unlock()
+				say("250 ok")
+			case up == "DATA":
+				say("354 go")
+				inData = true
+			case up == "QUIT":
+				say("221 bye")
+				return
+			default:
+				say("250 ok")
+			}
+		}
+	}()
+	return ln.Addr().String(), fake
+}
+
+func TestSMTPTransportDelivers(t *testing.T) {
+	addr, fake := startFakeSMTP(t)
+	s := NewEmail("email", EmailConfig{
+		Addr: addr, From: "herald@x", Recipient: "me@x", Username: "herald", Password: "secret",
+	})
+	if err := s.Deliver(context.Background(), sampleEvent()); err != nil {
+		t.Fatal(err)
+	}
+	body := fake.Body()
+	if !strings.Contains(body, "deploy finished") || !strings.Contains(body, "Subject:") {
+		t.Fatalf("server did not receive the message: %q", body)
+	}
+	if to := fake.To(); len(to) != 1 || !strings.Contains(to[0], "me@x") {
+		t.Fatalf("rcpt = %v", to)
+	}
+}
+
+func TestSMTPTransportDialFailure(t *testing.T) {
+	// A closed listener gives a connection error (retryable).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	s := NewEmail("email", EmailConfig{Addr: addr, From: "h@x", Recipient: "m@x"})
+	if err := s.Deliver(context.Background(), sampleEvent()); err == nil || app.IsPermanent(err) {
+		t.Fatalf("err = %v", err)
 	}
 }

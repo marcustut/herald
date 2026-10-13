@@ -1,4 +1,4 @@
-// Package render turns a report into an email subject, HTML body and text body.
+// Package render turns a event into an email subject, HTML body and text body.
 // Untrusted fields are escaped by html/template.
 package render
 
@@ -17,8 +17,8 @@ import (
 var files embed.FS
 
 var (
-	htmlTmpl = htmltemplate.Must(htmltemplate.ParseFS(files, "templates/report.html.tmpl"))
-	textTmpl = texttemplate.Must(texttemplate.ParseFS(files, "templates/report.txt.tmpl"))
+	htmlTmpl = htmltemplate.Must(htmltemplate.ParseFS(files, "templates/event.html.tmpl"))
+	textTmpl = texttemplate.Must(texttemplate.ParseFS(files, "templates/event.txt.tmpl"))
 )
 
 type Rendered struct {
@@ -38,7 +38,7 @@ type view struct {
 	Time    string
 }
 
-func Report(r domain.Report) (Rendered, error) {
+func Event(r domain.Event) (Rendered, error) {
 	v := view{
 		Status:  r.Status.String(),
 		Project: string(r.ProjectID),

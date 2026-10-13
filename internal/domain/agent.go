@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// AgentID identifies the agent that produced a report. Unlike Title and Body it
+// AgentID identifies the agent that produced a event. Unlike Title and Body it
 // is never supplied by the client: it is resolved from the bearer credential,
 // so it is trustworthy provenance an agent cannot spoof.
 type AgentID string

@@ -15,7 +15,7 @@ var (
 	// ErrDeliveryNotFound is returned by a DeliveryStore when updating a row
 	// that no longer exists.
 	ErrDeliveryNotFound = errors.New("delivery not found")
-	// ErrIdempotencyConflict signals that Save collided with an existing report
+	// ErrIdempotencyConflict signals that Save collided with an existing event
 	// for the same (tenant, idempotency key); the caller returns the original.
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
 )

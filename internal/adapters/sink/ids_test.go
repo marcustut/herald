@@ -20,7 +20,7 @@ func TestNoopLogs(t *testing.T) {
 	var buf bytes.Buffer
 	n := NewNoop("noop")
 	n.Logger = slog.New(slog.NewTextHandler(&buf, nil))
-	if err := n.Deliver(context.Background(), sampleReport()); err != nil {
+	if err := n.Deliver(context.Background(), sampleEvent()); err != nil {
 		t.Fatal(err)
 	}
 	if buf.Len() == 0 {

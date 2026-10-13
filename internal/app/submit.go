@@ -13,7 +13,7 @@ type LinkInput struct {
 	URL   string
 }
 
-// SubmitRequest is the transport-agnostic shape of POST /v1/reports. Agent and
+// SubmitRequest is the transport-agnostic shape of POST /v1/events. Agent and
 // Context are asserted by the trusted client; Tenant and Project come from the
 // principal, never the request.
 type SubmitRequest struct {
@@ -26,18 +26,18 @@ type SubmitRequest struct {
 	IdempotencyKey string
 }
 
-// SubmitReport accepts a report, deduplicates it by idempotency key, redacts
+// SubmitEvent accepts a event, deduplicates it by idempotency key, redacts
 // untrusted text, and fans it out to the project's sinks as delivery rows.
-type SubmitReport struct {
-	Reports ReportStore
-	Sinks   SinkDirectory
-	IDs     IDGenerator
-	Clock   Clock
+type SubmitEvent struct {
+	Events EventStore
+	Sinks  SinkDirectory
+	IDs    IDGenerator
+	Clock  Clock
 }
 
-// Handle returns the report id. A replay of the same (tenant, idempotency key)
-// returns the original id without creating a second report or re-fanning out.
-func (uc SubmitReport) Handle(ctx context.Context, p domain.Principal, req SubmitRequest) (domain.ReportID, error) {
+// Handle returns the event id. A replay of the same (tenant, idempotency key)
+// returns the original id without creating a second event or re-fanning out.
+func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req SubmitRequest) (domain.EventID, error) {
 	status, err := domain.ParseStatus(req.Status)
 	if err != nil {
 		return "", err
@@ -59,14 +59,14 @@ func (uc SubmitReport) Handle(ctx context.Context, p domain.Principal, req Submi
 		return "", err
 	}
 
-	if existing, ok, err := uc.Reports.ByIdempotencyKey(ctx, p.TenantID, key); err != nil {
+	if existing, ok, err := uc.Events.ByIdempotencyKey(ctx, p.TenantID, key); err != nil {
 		return "", err
 	} else if ok {
 		return existing.ID, nil
 	}
 
-	report, err := domain.NewReport(domain.NewReportInput{
-		ID:             uc.IDs.NewReportID(),
+	event, err := domain.NewEvent(domain.NewEventInput{
+		ID:             uc.IDs.NewEventID(),
 		TenantID:       p.TenantID,
 		ProjectID:      p.ProjectID,
 		AgentID:        agent,
@@ -82,7 +82,7 @@ func (uc SubmitReport) Handle(ctx context.Context, p domain.Principal, req Submi
 		return "", err
 	}
 	// Redact before persistence so the gateway never becomes a secret store.
-	report = report.Redact()
+	event = event.Redact()
 
 	sinks, err := uc.Sinks.EnabledSinks(ctx, p.TenantID, p.ProjectID)
 	if err != nil {
@@ -90,13 +90,13 @@ func (uc SubmitReport) Handle(ctx context.Context, p domain.Principal, req Submi
 	}
 	deliveries := make([]domain.Delivery, len(sinks))
 	for i, s := range sinks {
-		deliveries[i] = domain.NewDelivery(uc.IDs.NewDeliveryID(), report.ID, s, report.CreatedAt)
+		deliveries[i] = domain.NewDelivery(uc.IDs.NewDeliveryID(), event.ID, s, event.CreatedAt)
 	}
 
-	if err := uc.Reports.Save(ctx, report, deliveries); err != nil {
+	if err := uc.Events.Save(ctx, event, deliveries); err != nil {
 		// A concurrent request may have won the idempotency race.
 		if errors.Is(err, ErrIdempotencyConflict) {
-			existing, ok, lookupErr := uc.Reports.ByIdempotencyKey(ctx, p.TenantID, key)
+			existing, ok, lookupErr := uc.Events.ByIdempotencyKey(ctx, p.TenantID, key)
 			if lookupErr != nil {
 				return "", lookupErr
 			}
@@ -106,7 +106,7 @@ func (uc SubmitReport) Handle(ctx context.Context, p domain.Principal, req Submi
 		}
 		return "", err
 	}
-	return report.ID, nil
+	return event.ID, nil
 }
 
 func parseLinks(in []LinkInput) ([]domain.Link, error) {

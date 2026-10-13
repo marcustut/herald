@@ -12,7 +12,7 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-// Webhook POSTs a JSON representation of the report to a destination URL.
+// Webhook POSTs a JSON representation of the event to a destination URL.
 type Webhook struct {
 	sinkID domain.SinkID
 	url    string
@@ -47,7 +47,7 @@ type webhookLink struct {
 	URL   string `json:"url"`
 }
 
-func (w *Webhook) Deliver(ctx context.Context, r domain.Report) error {
+func (w *Webhook) Deliver(ctx context.Context, r domain.Event) error {
 	payload := webhookPayload{
 		ID:             string(r.ID),
 		Status:         r.Status.String(),

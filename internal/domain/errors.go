@@ -5,7 +5,7 @@ import "errors"
 // Sentinel errors are wrapped with context at the point of failure, so callers
 // match them with errors.Is rather than comparing strings.
 var (
-	ErrInvalidReport         = errors.New("invalid report")
+	ErrInvalidEvent          = errors.New("invalid event")
 	ErrInvalidStatus         = errors.New("invalid status")
 	ErrInvalidLink           = errors.New("invalid link")
 	ErrInvalidID             = errors.New("invalid id")

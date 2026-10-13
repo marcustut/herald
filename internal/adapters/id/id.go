@@ -13,7 +13,7 @@ import (
 // supported platforms.
 type Random struct{}
 
-func (Random) NewReportID() domain.ReportID     { return domain.ReportID("rep_" + hex16()) }
+func (Random) NewEventID() domain.EventID       { return domain.EventID("evt_" + hex16()) }
 func (Random) NewDeliveryID() domain.DeliveryID { return domain.DeliveryID("del_" + hex16()) }
 
 func hex16() string {

@@ -30,28 +30,28 @@ func (s staticSinks) EnabledSinks(context.Context, domain.TenantID, domain.Proje
 }
 
 type harness struct {
-	server  *httptest.Server
-	issuer  app.Issuer
-	reports *memory.Reports
+	server *httptest.Server
+	issuer app.Issuer
+	events *memory.Events
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	creds := memory.NewCredentials()
-	reports := memory.NewReports()
+	events := memory.NewEvents()
 	issuer := app.Issuer{Store: creds, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: fixedClock{}}
 	api := &httpapi.Server{
 		Auth: app.Authenticator{Store: creds, Hasher: hash.SHA256{}},
-		Submit: app.SubmitReport{
-			Reports: reports,
-			Sinks:   staticSinks{"email"},
-			IDs:     id.Random{},
-			Clock:   fixedClock{},
+		Submit: app.SubmitEvent{
+			Events: events,
+			Sinks:  staticSinks{"email"},
+			IDs:    id.Random{},
+			Clock:  fixedClock{},
 		},
 	}
 	ts := httptest.NewServer(api.Handler())
 	t.Cleanup(ts.Close)
-	return &harness{server: ts, issuer: issuer, reports: reports}
+	return &harness{server: ts, issuer: issuer, events: events}
 }
 
 func (h *harness) token(t *testing.T) string {
@@ -65,7 +65,7 @@ func (h *harness) token(t *testing.T) string {
 
 func (h *harness) post(t *testing.T, token, contentType, body string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/v1/reports", strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/v1/events", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +114,8 @@ func TestSubmitAccepted(t *testing.T) {
 	if out.ID == "" {
 		t.Fatal("missing id")
 	}
-	if _, ok := h.reports.Report(domain.ReportID(out.ID)); !ok {
-		t.Fatal("report not stored")
+	if _, ok := h.events.Event(domain.EventID(out.ID)); !ok {
+		t.Fatal("event not stored")
 	}
 }
 
@@ -168,17 +168,17 @@ func TestSubmitValidation(t *testing.T) {
 
 func TestSubmitPayloadTooLarge(t *testing.T) {
 	creds := memory.NewCredentials()
-	reports := memory.NewReports()
+	events := memory.NewEvents()
 	issuer := app.Issuer{Store: creds, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: fixedClock{}}
 	api := &httpapi.Server{
 		Auth:    app.Authenticator{Store: creds, Hasher: hash.SHA256{}},
-		Submit:  app.SubmitReport{Reports: reports, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}},
+		Submit:  app.SubmitEvent{Events: events, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}},
 		MaxBody: 16,
 	}
 	ts := httptest.NewServer(api.Handler())
 	defer ts.Close()
 	raw, _ := issuer.IssueProjectToken(context.Background(), "ten_1", "axis")
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/reports", strings.NewReader(validBody))
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/events", strings.NewReader(validBody))
 	req.Header.Set("Authorization", "Bearer "+raw)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
@@ -193,11 +193,11 @@ func TestSubmitPayloadTooLarge(t *testing.T) {
 
 func TestScopedTokenProjectAuthorization(t *testing.T) {
 	creds := memory.NewCredentials()
-	reports := memory.NewReports()
+	events := memory.NewEvents()
 	issuer := app.Issuer{Store: creds, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: fixedClock{}}
 	api := &httpapi.Server{
 		Auth:   app.Authenticator{Store: creds, Hasher: hash.SHA256{}},
-		Submit: app.SubmitReport{Reports: reports, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}},
+		Submit: app.SubmitEvent{Events: events, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}},
 	}
 	ts := httptest.NewServer(api.Handler())
 	defer ts.Close()
@@ -207,7 +207,7 @@ func TestScopedTokenProjectAuthorization(t *testing.T) {
 	}
 
 	post := func(body string) int {
-		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/reports", strings.NewReader(body))
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/events", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+scoped)
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)

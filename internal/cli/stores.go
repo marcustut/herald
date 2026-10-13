@@ -11,7 +11,7 @@ import (
 
 type stores struct {
 	credentials app.CredentialStore
-	reports     app.ReportStore
+	events      app.EventStore
 	deliveries  app.DeliveryStore
 	close       func()
 }
@@ -24,8 +24,8 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		if dsn == "" && !dev && logger != nil {
 			logger.Warn("no database configured; using in-memory stores")
 		}
-		mem := memory.NewReports()
-		return stores{credentials: memory.NewCredentials(), reports: mem, deliveries: mem}, nil
+		mem := memory.NewEvents()
+		return stores{credentials: memory.NewCredentials(), events: mem, deliveries: mem}, nil
 	}
 	pool, err := postgres.Open(ctx, dsn)
 	if err != nil {
@@ -35,11 +35,11 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		pool.Close()
 		return stores{}, err
 	}
-	reports := postgres.NewReports(pool)
+	events := postgres.NewEvents(pool)
 	return stores{
 		credentials: postgres.NewCredentials(pool),
-		reports:     reports,
-		deliveries:  reports,
+		events:      events,
+		deliveries:  events,
 		close:       pool.Close,
 	}, nil
 }

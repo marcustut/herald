@@ -10,7 +10,7 @@ const testLease = 30 * time.Second
 
 func claimed(t *testing.T, now time.Time) *Delivery {
 	t.Helper()
-	d := NewDelivery("del_1", "rep_1", "sink_1", now)
+	d := NewDelivery("del_1", "evt_1", "sink_1", now)
 	if err := d.Claim(now, testLease); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -18,7 +18,7 @@ func claimed(t *testing.T, now time.Time) *Delivery {
 }
 
 func TestNewDelivery(t *testing.T) {
-	d := NewDelivery("del_1", "rep_1", "sink_1", refTime)
+	d := NewDelivery("del_1", "evt_1", "sink_1", refTime)
 	if d.State != DeliveryPending || d.Attempts != 0 {
 		t.Fatalf("got %+v", d)
 	}
@@ -28,7 +28,7 @@ func TestNewDelivery(t *testing.T) {
 }
 
 func TestClaim(t *testing.T) {
-	d := NewDelivery("del_1", "rep_1", "sink_1", refTime)
+	d := NewDelivery("del_1", "evt_1", "sink_1", refTime)
 	if err := d.Claim(refTime, testLease); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestSucceed(t *testing.T) {
 }
 
 func TestSucceedInvalidFromPending(t *testing.T) {
-	d := NewDelivery("del_1", "rep_1", "sink_1", refTime)
+	d := NewDelivery("del_1", "evt_1", "sink_1", refTime)
 	if err := d.Succeed(refTime); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("err = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestFailPermanentGoesDead(t *testing.T) {
 
 func TestFailExhaustsAttempts(t *testing.T) {
 	b := Backoff{Base: time.Second, Cap: time.Minute}
-	d := NewDelivery("del_1", "rep_1", "sink_1", refTime)
+	d := NewDelivery("del_1", "evt_1", "sink_1", refTime)
 	now := refTime
 	for i := 1; i <= 2; i++ {
 		if err := d.Claim(now, testLease); err != nil {
@@ -122,7 +122,7 @@ func TestFailExhaustsAttempts(t *testing.T) {
 }
 
 func TestFailInvalidFromPending(t *testing.T) {
-	d := NewDelivery("del_1", "rep_1", "sink_1", refTime)
+	d := NewDelivery("del_1", "evt_1", "sink_1", refTime)
 	if err := d.Fail(refTime, nil, true, Backoff{}, 3); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("err = %v", err)
 	}
@@ -143,7 +143,7 @@ func TestReclaim(t *testing.T) {
 }
 
 func TestReclaimInvalidFromPending(t *testing.T) {
-	d := NewDelivery("del_1", "rep_1", "sink_1", refTime)
+	d := NewDelivery("del_1", "evt_1", "sink_1", refTime)
 	if err := d.Reclaim(refTime); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("err = %v", err)
 	}
@@ -157,7 +157,7 @@ func TestLeaseExpired(t *testing.T) {
 	if !d.LeaseExpired(refTime.Add(testLease)) {
 		t.Fatal("lease should be expired at its deadline")
 	}
-	pending := NewDelivery("del_2", "rep_1", "sink_1", refTime)
+	pending := NewDelivery("del_2", "evt_1", "sink_1", refTime)
 	if pending.LeaseExpired(refTime.Add(time.Hour)) {
 		t.Fatal("pending delivery has no lease")
 	}

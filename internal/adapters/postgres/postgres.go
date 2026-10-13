@@ -1,4 +1,4 @@
-// Package postgres implements the credential, report and delivery stores on
+// Package postgres implements the credential, event and delivery stores on
 // PostgreSQL. The delivery queue uses SELECT ... FOR UPDATE SKIP LOCKED so many
 // dispatcher instances can drain it safely.
 package postgres
@@ -19,6 +19,23 @@ import (
 )
 
 const schema = `
+-- Rename the pre-Event schema (reports / deliveries.report_id) in place so
+-- existing data survives the Report -> Event rename. Guarded and idempotent;
+-- a fresh database skips straight to the CREATE statements below.
+DO $$
+BEGIN
+	IF to_regclass('public.reports') IS NOT NULL AND to_regclass('public.events') IS NULL THEN
+		ALTER TABLE reports RENAME TO events;
+	END IF;
+	IF EXISTS (SELECT 1 FROM information_schema.columns
+	           WHERE table_schema = 'public' AND table_name = 'deliveries'
+	             AND column_name = 'report_id') THEN
+		ALTER TABLE deliveries RENAME COLUMN report_id TO event_id;
+	END IF;
+END $$;
+
+ALTER INDEX IF EXISTS deliveries_report RENAME TO deliveries_event;
+
 CREATE TABLE IF NOT EXISTS credentials (
 	token_hash   text PRIMARY KEY,
 	tenant_id    text NOT NULL,
@@ -29,7 +46,7 @@ CREATE TABLE IF NOT EXISTS credentials (
 	last_used_at timestamptz
 );
 
-CREATE TABLE IF NOT EXISTS reports (
+CREATE TABLE IF NOT EXISTS events (
 	id              text PRIMARY KEY,
 	tenant_id       text NOT NULL,
 	project_id      text NOT NULL,
@@ -46,7 +63,7 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE TABLE IF NOT EXISTS deliveries (
 	id              text PRIMARY KEY,
-	report_id       text NOT NULL REFERENCES reports(id),
+	event_id       text NOT NULL REFERENCES events(id),
 	sink_id         text NOT NULL,
 	state           text NOT NULL,
 	attempts        integer NOT NULL,
@@ -58,7 +75,7 @@ CREATE TABLE IF NOT EXISTS deliveries (
 );
 
 CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries (state, next_attempt_at);
-CREATE INDEX IF NOT EXISTS deliveries_report ON deliveries (report_id);
+CREATE INDEX IF NOT EXISTS deliveries_event ON deliveries (event_id);
 `
 
 // Open connects to PostgreSQL and verifies the connection.
@@ -173,12 +190,12 @@ func scanCredential(row pgx.Row) (app.Credential, error) {
 
 var _ app.CredentialStore = (*Credentials)(nil)
 
-// Reports is a PostgreSQL app.ReportStore and app.DeliveryStore.
-type Reports struct{ pool *pgxpool.Pool }
+// Events is a PostgreSQL app.EventStore and app.DeliveryStore.
+type Events struct{ pool *pgxpool.Pool }
 
-func NewReports(pool *pgxpool.Pool) *Reports { return &Reports{pool: pool} }
+func NewEvents(pool *pgxpool.Pool) *Events { return &Events{pool: pool} }
 
-func (s *Reports) Save(ctx context.Context, rep domain.Report, deliveries []domain.Delivery) error {
+func (s *Events) Save(ctx context.Context, rep domain.Event, deliveries []domain.Delivery) error {
 	links, err := json.Marshal(rep.Links)
 	if err != nil {
 		return fmt.Errorf("encode links: %w", err)
@@ -195,7 +212,7 @@ func (s *Reports) Save(ctx context.Context, rep domain.Report, deliveries []doma
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO reports (id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at)
+		INSERT INTO events (id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		string(rep.ID), string(rep.TenantID), string(rep.ProjectID), string(rep.AgentID),
 		string(rep.Status), rep.Title, rep.Body, links, labels, string(rep.IdempotencyKey), rep.CreatedAt)
@@ -203,14 +220,14 @@ func (s *Reports) Save(ctx context.Context, rep domain.Report, deliveries []doma
 		if isUniqueViolation(err) {
 			return app.ErrIdempotencyConflict
 		}
-		return fmt.Errorf("insert report: %w", err)
+		return fmt.Errorf("insert event: %w", err)
 	}
 
 	for _, d := range deliveries {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO deliveries (id, report_id, sink_id, state, attempts, next_attempt_at, lease_until, last_error, created_at, updated_at)
+			INSERT INTO deliveries (id, event_id, sink_id, state, attempts, next_attempt_at, lease_until, last_error, created_at, updated_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			string(d.ID), string(d.ReportID), string(d.SinkID), string(d.State), d.Attempts,
+			string(d.ID), string(d.EventID), string(d.SinkID), string(d.State), d.Attempts,
 			d.NextAttemptAt, nullTime(d.LeaseUntil), d.LastError, d.CreatedAt, d.UpdatedAt)
 		if err != nil {
 			return fmt.Errorf("insert delivery: %w", err)
@@ -222,29 +239,29 @@ func (s *Reports) Save(ctx context.Context, rep domain.Report, deliveries []doma
 	return nil
 }
 
-func (s *Reports) ByID(ctx context.Context, id domain.ReportID) (domain.Report, bool, error) {
-	row := s.pool.QueryRow(ctx, selectReport+` WHERE id = $1`, string(id))
-	rep, err := scanReport(row)
+func (s *Events) ByID(ctx context.Context, id domain.EventID) (domain.Event, bool, error) {
+	row := s.pool.QueryRow(ctx, selectEvent+` WHERE id = $1`, string(id))
+	rep, err := scanEvent(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Report{}, false, nil
+		return domain.Event{}, false, nil
 	}
 	return rep, err == nil, err
 }
 
-func (s *Reports) ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Report, bool, error) {
-	row := s.pool.QueryRow(ctx, selectReport+` WHERE tenant_id = $1 AND idempotency_key = $2`, string(tenant), string(key))
-	rep, err := scanReport(row)
+func (s *Events) ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error) {
+	row := s.pool.QueryRow(ctx, selectEvent+` WHERE tenant_id = $1 AND idempotency_key = $2`, string(tenant), string(key))
+	rep, err := scanEvent(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Report{}, false, nil
+		return domain.Event{}, false, nil
 	}
 	return rep, err == nil, err
 }
 
-const selectReport = `SELECT id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at FROM reports`
+const selectEvent = `SELECT id, tenant_id, project_id, agent_id, status, title, body, links, context, idempotency_key, created_at FROM events`
 
-func scanReport(row pgx.Row) (domain.Report, error) {
+func scanEvent(row pgx.Row) (domain.Event, error) {
 	var (
-		rep     domain.Report
+		rep     domain.Event
 		id      string
 		tenant  string
 		project string
@@ -255,19 +272,19 @@ func scanReport(row pgx.Row) (domain.Report, error) {
 		key     string
 	)
 	if err := row.Scan(&id, &tenant, &project, &agent, &status, &rep.Title, &rep.Body, &links, &context, &key, &rep.CreatedAt); err != nil {
-		return domain.Report{}, err
+		return domain.Event{}, err
 	}
-	rep.ID = domain.ReportID(id)
+	rep.ID = domain.EventID(id)
 	rep.TenantID = domain.TenantID(tenant)
 	rep.ProjectID = domain.ProjectID(project)
 	rep.AgentID = domain.AgentID(agent)
 	rep.Status = domain.Status(status)
 	rep.IdempotencyKey = domain.IdempotencyKey(key)
 	if err := json.Unmarshal(links, &rep.Links); err != nil {
-		return domain.Report{}, fmt.Errorf("decode links: %w", err)
+		return domain.Event{}, fmt.Errorf("decode links: %w", err)
 	}
 	if err := json.Unmarshal(context, &rep.Context); err != nil {
-		return domain.Report{}, fmt.Errorf("decode context: %w", err)
+		return domain.Event{}, fmt.Errorf("decode context: %w", err)
 	}
 	return rep, nil
 }
@@ -285,9 +302,9 @@ WHERE id IN (
 	FOR UPDATE SKIP LOCKED
 	LIMIT $3
 )
-RETURNING id, report_id, sink_id, state, attempts, next_attempt_at, lease_until, last_error, created_at, updated_at`
+RETURNING id, event_id, sink_id, state, attempts, next_attempt_at, lease_until, last_error, created_at, updated_at`
 
-func (s *Reports) Claim(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]domain.Delivery, error) {
+func (s *Events) Claim(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]domain.Delivery, error) {
 	if limit <= 0 {
 		limit = 1
 	}
@@ -308,7 +325,7 @@ func (s *Reports) Claim(ctx context.Context, now time.Time, lease time.Duration,
 	return claimed, rows.Err()
 }
 
-func (s *Reports) Update(ctx context.Context, d domain.Delivery) error {
+func (s *Events) Update(ctx context.Context, d domain.Delivery) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE deliveries SET
 			state = $2, attempts = $3, next_attempt_at = $4, lease_until = $5, last_error = $6, updated_at = $7
@@ -325,18 +342,18 @@ func (s *Reports) Update(ctx context.Context, d domain.Delivery) error {
 
 func scanDelivery(row pgx.Row) (domain.Delivery, error) {
 	var (
-		d        domain.Delivery
-		id       string
-		reportID string
-		sinkID   string
-		state    string
-		lease    *time.Time
+		d       domain.Delivery
+		id      string
+		eventID string
+		sinkID  string
+		state   string
+		lease   *time.Time
 	)
-	if err := row.Scan(&id, &reportID, &sinkID, &state, &d.Attempts, &d.NextAttemptAt, &lease, &d.LastError, &d.CreatedAt, &d.UpdatedAt); err != nil {
+	if err := row.Scan(&id, &eventID, &sinkID, &state, &d.Attempts, &d.NextAttemptAt, &lease, &d.LastError, &d.CreatedAt, &d.UpdatedAt); err != nil {
 		return domain.Delivery{}, err
 	}
 	d.ID = domain.DeliveryID(id)
-	d.ReportID = domain.ReportID(reportID)
+	d.EventID = domain.EventID(eventID)
 	d.SinkID = domain.SinkID(sinkID)
 	d.State = domain.DeliveryState(state)
 	d.LeaseUntil = timeOrZero(lease)
@@ -363,6 +380,6 @@ func timeOrZero(t *time.Time) time.Time {
 }
 
 var (
-	_ app.ReportStore   = (*Reports)(nil)
-	_ app.DeliveryStore = (*Reports)(nil)
+	_ app.EventStore    = (*Events)(nil)
+	_ app.DeliveryStore = (*Events)(nil)
 )

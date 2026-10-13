@@ -20,7 +20,7 @@ const defaultMaxBody = 256 << 10
 // Server wires the HTTP surface to the application use cases.
 type Server struct {
 	Auth    app.Authenticator
-	Submit  app.SubmitReport
+	Submit  app.SubmitEvent
 	Ready   func(ctx context.Context) error
 	MaxBody int64
 	Logger  *slog.Logger
@@ -28,6 +28,8 @@ type Server struct {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/events", s.handleSubmit)
+	// Deprecated alias for the pre-Event contract; behaves identically.
 	mux.HandleFunc("POST /v1/reports", s.handleSubmit)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
@@ -51,6 +53,10 @@ type submitPayload struct {
 }
 
 func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/reports" {
+		w.Header().Set("Deprecation", "true")
+		w.Header().Set("Link", `</v1/events>; rel="successor-version"`)
+	}
 	if !isJSON(r.Header.Get("Content-Type")) {
 		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json", "")
 		return
@@ -168,7 +174,7 @@ func isJSON(contentType string) bool {
 
 func isValidation(err error) bool {
 	for _, sentinel := range []error{
-		domain.ErrInvalidReport,
+		domain.ErrInvalidEvent,
 		domain.ErrInvalidStatus,
 		domain.ErrInvalidLink,
 		domain.ErrInvalidAgent,

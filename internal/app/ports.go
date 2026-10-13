@@ -26,7 +26,7 @@ type Hasher interface {
 
 // IDGenerator mints identifiers for new aggregates.
 type IDGenerator interface {
-	NewReportID() domain.ReportID
+	NewEventID() domain.EventID
 	NewDeliveryID() domain.DeliveryID
 }
 
@@ -45,7 +45,7 @@ type Credential struct {
 	LastUsedAt time.Time
 }
 
-// Allows reports whether the credential may act for project p. An empty project
+// Allows events whether the credential may act for project p. An empty project
 // never matches, so a scoped token must always name one.
 func (c Credential) Allows(p domain.ProjectID) bool {
 	if p == "" {
@@ -70,18 +70,18 @@ type CredentialStore interface {
 	ProjectCredential(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) (Credential, error)
 }
 
-// SinkDirectory resolves the sinks a project's reports fan out to.
+// SinkDirectory resolves the sinks a project's events fan out to.
 type SinkDirectory interface {
 	EnabledSinks(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.SinkID, error)
 }
 
-// ReportStore persists a report and its delivery rows atomically, and answers
-// idempotency lookups. Save returns ErrIdempotencyConflict when a report for the
+// EventStore persists a event and its delivery rows atomically, and answers
+// idempotency lookups. Save returns ErrIdempotencyConflict when a event for the
 // same (tenant, idempotency key) already exists.
-type ReportStore interface {
-	Save(ctx context.Context, report domain.Report, deliveries []domain.Delivery) error
-	ByID(ctx context.Context, id domain.ReportID) (domain.Report, bool, error)
-	ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Report, bool, error)
+type EventStore interface {
+	Save(ctx context.Context, event domain.Event, deliveries []domain.Delivery) error
+	ByID(ctx context.Context, id domain.EventID) (domain.Event, bool, error)
+	ByIdempotencyKey(ctx context.Context, tenant domain.TenantID, key domain.IdempotencyKey) (domain.Event, bool, error)
 }
 
 // DeliveryStore is the queue backend the dispatcher drains.
@@ -92,11 +92,11 @@ type DeliveryStore interface {
 	Update(ctx context.Context, d domain.Delivery) error
 }
 
-// Sink pushes a report to one external destination, rendering whatever payload
+// Sink pushes a event to one external destination, rendering whatever payload
 // that destination needs.
 type Sink interface {
 	ID() domain.SinkID
-	Deliver(ctx context.Context, report domain.Report) error
+	Deliver(ctx context.Context, event domain.Event) error
 }
 
 // SinkError classifies a delivery failure. A permanent failure is not retried.
@@ -114,7 +114,7 @@ func Permanent(err error) error { return &SinkError{Err: err, Permanent: true} }
 // Retryable wraps err as retryable.
 func Retryable(err error) error { return &SinkError{Err: err} }
 
-// IsPermanent reports whether err was classified permanent.
+// IsPermanent events whether err was classified permanent.
 func IsPermanent(err error) bool {
 	var se *SinkError
 	return errors.As(err, &se) && se.Permanent

@@ -60,7 +60,7 @@ func runDispatch(ctx context.Context, args []string, stdout, stderr io.Writer) i
 
 	dispatcher := app.Dispatcher{
 		Deliveries:  st.deliveries,
-		Reports:     st.reports,
+		Events:      st.events,
 		Sinks:       sinks,
 		Clock:       systemClock{},
 		Lease:       *lease,

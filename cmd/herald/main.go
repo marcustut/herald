@@ -1,4 +1,4 @@
-// Command herald is the agent report gateway: a server plus a client CLI.
+// Command herald is the agent event gateway: a server plus a client CLI.
 package main
 
 import (

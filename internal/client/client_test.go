@@ -17,18 +17,18 @@ func TestSubmit(t *testing.T) {
 		contentType = r.Header.Get("Content-Type")
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"id":"rep_1"}`))
+		_, _ = w.Write([]byte(`{"id":"evt_1"}`))
 	}))
 	defer srv.Close()
 
 	c := &Client{Gateway: srv.URL, Token: "herald_axis_secret"}
-	id, err := c.Submit(context.Background(), Report{
+	id, err := c.Submit(context.Background(), Event{
 		Project: "axis", Status: "success", Title: "t", Agent: "a", Host: "h", IdempotencyKey: "k",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "rep_1" {
+	if id != "evt_1" {
 		t.Fatalf("id = %q", id)
 	}
 	if auth != "Bearer herald_axis_secret" || contentType != "application/json" {
@@ -46,7 +46,7 @@ func TestSubmitGatewayError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Report{Status: "success", Title: ""})
+	_, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Event{Status: "success", Title: ""})
 	var httpErr *HTTPError
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("err = %v", err)
@@ -65,7 +65,7 @@ func TestSubmitNoID(t *testing.T) {
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
-	if _, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Report{Status: "success", Title: "t"}); err == nil {
+	if _, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Event{Status: "success", Title: "t"}); err == nil {
 		t.Fatal("expected error for missing id")
 	}
 }
@@ -73,7 +73,7 @@ func TestSubmitNoID(t *testing.T) {
 func TestSubmitTransportError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	srv.Close()
-	if _, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Report{Status: "success", Title: "t"}); err == nil {
+	if _, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Event{Status: "success", Title: "t"}); err == nil {
 		t.Fatal("expected transport error")
 	}
 }

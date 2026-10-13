@@ -15,11 +15,11 @@ import (
 )
 
 // The full path with the real crypto adapters: issue a token, authenticate it,
-// submit a report, and confirm it is redacted and fanned out to a delivery row.
-func TestReportFlowEndToEnd(t *testing.T) {
+// submit a event, and confirm it is redacted and fanned out to a delivery row.
+func TestEventFlowEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	creds := memory.NewCredentials()
-	reports := memory.NewReports()
+	events := memory.NewEvents()
 
 	issuer := app.Issuer{Store: creds, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: fixedClock{}}
 	raw, err := issuer.IssueProjectToken(ctx, "ten_1", "axis")
@@ -33,7 +33,7 @@ func TestReportFlowEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	submit := app.SubmitReport{Reports: reports, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}}
+	submit := app.SubmitEvent{Events: events, Sinks: staticSinks{"email"}, IDs: id.Random{}, Clock: fixedClock{}}
 	req := app.SubmitRequest{
 		Status:         "success",
 		Title:          "deploy finished",
@@ -46,17 +46,17 @@ func TestReportFlowEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rep, ok := reports.Report(id)
+	rep, ok := events.Event(id)
 	if !ok {
-		t.Fatal("report not found")
+		t.Fatal("event not found")
 	}
 	if strings.Contains(rep.Body, "hunter2") {
 		t.Fatalf("secret persisted: %q", rep.Body)
 	}
 	if rep.ProjectID != "axis" || rep.AgentID != "herdr-build" {
-		t.Fatalf("report = %+v", rep)
+		t.Fatalf("event = %+v", rep)
 	}
-	if got := reports.Deliveries(); len(got) != 1 || got[0].SinkID != "email" || got[0].ReportID != id {
+	if got := events.Deliveries(); len(got) != 1 || got[0].SinkID != "email" || got[0].EventID != id {
 		t.Fatalf("deliveries = %+v", got)
 	}
 
@@ -69,7 +69,7 @@ func TestReportFlowEndToEnd(t *testing.T) {
 	if again != id {
 		t.Fatalf("replay id = %q, want %q", again, id)
 	}
-	if got := reports.Deliveries(); len(got) != 1 {
+	if got := events.Deliveries(); len(got) != 1 {
 		t.Fatalf("replay re-fanned out: %d deliveries", len(got))
 	}
 }

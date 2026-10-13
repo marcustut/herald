@@ -11,7 +11,7 @@ let
 in
 {
   options.services.herald = {
-    enable = lib.mkEnableOption "the herald agent report gateway";
+    enable = lib.mkEnableOption "the herald agent event gateway";
 
     package = lib.mkOption {
       type = lib.types.package;
@@ -101,7 +101,7 @@ in
       description = ''
         URL path prefix the API is served under. "/" serves at the root;
         otherwise the prefix is stripped before proxying (so "/api" exposes
-        https://<domain>/api/v1/reports).
+        https://<domain>/api/v1/events).
       '';
     };
   };
@@ -117,7 +117,7 @@ in
       environment.systemPackages = [ cfg.package ];
 
       systemd.services.herald = {
-        description = "herald agent report gateway (HTTP API)";
+        description = "herald agent event gateway (HTTP API)";
         wantedBy = [ "multi-user.target" ];
         after = [ "network-online.target" "postgresql.service" ];
         wants = [ "network-online.target" ];

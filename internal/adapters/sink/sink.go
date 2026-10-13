@@ -22,9 +22,9 @@ func NewNoop(id domain.SinkID) *Noop { return &Noop{sinkID: id} }
 
 func (s *Noop) ID() domain.SinkID { return s.sinkID }
 
-func (s *Noop) Deliver(_ context.Context, r domain.Report) error {
+func (s *Noop) Deliver(_ context.Context, r domain.Event) error {
 	if s.Logger != nil {
-		s.Logger.Info("noop sink delivered", "sink", s.sinkID, "report", r.ID)
+		s.Logger.Info("noop sink delivered", "sink", s.sinkID, "event", r.ID)
 	}
 	return nil
 }

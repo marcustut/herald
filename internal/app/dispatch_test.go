@@ -9,9 +9,9 @@ import (
 	"github.com/marcustut/herald/internal/domain"
 )
 
-func seedReport(t *testing.T, reports *fakeReports, id domain.ReportID) {
+func seedEvent(t *testing.T, events *fakeEvents, id domain.EventID) {
 	t.Helper()
-	rep := domain.Report{
+	rep := domain.Event{
 		ID:             id,
 		TenantID:       "ten_1",
 		ProjectID:      "axis",
@@ -21,15 +21,15 @@ func seedReport(t *testing.T, reports *fakeReports, id domain.ReportID) {
 		IdempotencyKey: domain.IdempotencyKey("k-" + string(id)),
 		CreatedAt:      testNow,
 	}
-	if err := reports.Save(context.Background(), rep, nil); err != nil {
+	if err := events.Save(context.Background(), rep, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func newDispatcher(deliveries *fakeDeliveries, reports *fakeReports, sinks map[domain.SinkID]Sink) Dispatcher {
+func newDispatcher(deliveries *fakeDeliveries, events *fakeEvents, sinks map[domain.SinkID]Sink) Dispatcher {
 	return Dispatcher{
 		Deliveries:  deliveries,
-		Reports:     reports,
+		Events:      events,
 		Sinks:       sinks,
 		Clock:       fakeClock{testNow},
 		Lease:       time.Minute,
@@ -40,11 +40,11 @@ func newDispatcher(deliveries *fakeDeliveries, reports *fakeReports, sinks map[d
 }
 
 func TestDispatchDelivers(t *testing.T) {
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow))
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
 	sink := &fakeSink{id: "email"}
-	uc := newDispatcher(deliveries, reports, map[domain.SinkID]Sink{"email": sink})
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": sink})
 
 	n, err := uc.ProcessBatch(context.Background())
 	if err != nil {
@@ -53,7 +53,7 @@ func TestDispatchDelivers(t *testing.T) {
 	if n != 1 || sink.calls != 1 {
 		t.Fatalf("n=%d calls=%d", n, sink.calls)
 	}
-	if sink.got.ID != "rep_1" {
+	if sink.got.ID != "evt_1" {
 		t.Fatalf("sink got %q", sink.got.ID)
 	}
 	if got := deliveries.row("del_1").State; got != domain.DeliveryDelivered {
@@ -62,11 +62,11 @@ func TestDispatchDelivers(t *testing.T) {
 }
 
 func TestDispatchRetryableFailure(t *testing.T) {
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow))
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
 	sink := &fakeSink{id: "email", err: Retryable(errors.New("503"))}
-	uc := newDispatcher(deliveries, reports, map[domain.SinkID]Sink{"email": sink})
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": sink})
 
 	if _, err := uc.ProcessBatch(context.Background()); err != nil {
 		t.Fatal(err)
@@ -84,11 +84,11 @@ func TestDispatchRetryableFailure(t *testing.T) {
 }
 
 func TestDispatchPermanentFailure(t *testing.T) {
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow))
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
 	sink := &fakeSink{id: "email", err: Permanent(errors.New("404"))}
-	uc := newDispatcher(deliveries, reports, map[domain.SinkID]Sink{"email": sink})
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": sink})
 
 	if _, err := uc.ProcessBatch(context.Background()); err != nil {
 		t.Fatal(err)
@@ -99,11 +99,11 @@ func TestDispatchPermanentFailure(t *testing.T) {
 }
 
 func TestDispatchExhaustsAttempts(t *testing.T) {
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow))
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
 	sink := &fakeSink{id: "email", err: Retryable(errors.New("503"))}
-	uc := newDispatcher(deliveries, reports, map[domain.SinkID]Sink{"email": sink})
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": sink})
 	uc.MaxAttempts = 1
 
 	if _, err := uc.ProcessBatch(context.Background()); err != nil {
@@ -115,10 +115,10 @@ func TestDispatchExhaustsAttempts(t *testing.T) {
 }
 
 func TestDispatchUnknownSink(t *testing.T) {
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "nope", testNow))
-	uc := newDispatcher(deliveries, reports, nil)
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "nope", testNow))
+	uc := newDispatcher(deliveries, events, nil)
 
 	if _, err := uc.ProcessBatch(context.Background()); err != nil {
 		t.Fatal(err)
@@ -128,9 +128,9 @@ func TestDispatchUnknownSink(t *testing.T) {
 	}
 }
 
-func TestDispatchMissingReport(t *testing.T) {
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_missing", "email", testNow))
-	uc := newDispatcher(deliveries, newFakeReports(), map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
+func TestDispatchMissingEvent(t *testing.T) {
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_missing", "email", testNow))
+	uc := newDispatcher(deliveries, newFakeEvents(), map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
 
 	if _, err := uc.ProcessBatch(context.Background()); err != nil {
 		t.Fatal(err)
@@ -141,11 +141,11 @@ func TestDispatchMissingReport(t *testing.T) {
 }
 
 func TestDispatchCanceledContextIsNotRetried(t *testing.T) {
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow))
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
 	sink := &fakeSink{id: "email", err: Retryable(context.Canceled)}
-	uc := newDispatcher(deliveries, reports, map[domain.SinkID]Sink{"email": sink})
+	uc := newDispatcher(deliveries, events, map[domain.SinkID]Sink{"email": sink})
 
 	if _, err := uc.ProcessBatch(context.Background()); err != nil {
 		t.Fatal(err)
@@ -158,31 +158,31 @@ func TestDispatchCanceledContextIsNotRetried(t *testing.T) {
 func TestDispatchErrors(t *testing.T) {
 	boom := errors.New("boom")
 
-	claimErr := newDispatcher(&fakeDeliveries{claimErr: boom}, newFakeReports(), nil)
+	claimErr := newDispatcher(&fakeDeliveries{claimErr: boom}, newFakeEvents(), nil)
 	if _, err := claimErr.ProcessBatch(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("claim err = %v", err)
 	}
 
-	reports := newFakeReports()
-	seedReport(t, reports, "rep_1")
-	reports.lookupErr = boom
-	lookupErr := newDispatcher(newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow)), reports, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	events.lookupErr = boom
+	lookupErr := newDispatcher(newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow)), events, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
 	if _, err := lookupErr.ProcessBatch(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("lookup err = %v", err)
 	}
 
-	reports2 := newFakeReports()
-	seedReport(t, reports2, "rep_1")
-	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "rep_1", "email", testNow))
+	events2 := newFakeEvents()
+	seedEvent(t, events2, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "email", testNow))
 	deliveries.updateErr = boom
-	updateErr := newDispatcher(deliveries, reports2, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
+	updateErr := newDispatcher(deliveries, events2, map[domain.SinkID]Sink{"email": &fakeSink{id: "email"}})
 	if _, err := updateErr.ProcessBatch(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("update err = %v", err)
 	}
 }
 
 func TestDispatchRunStopsOnCancel(t *testing.T) {
-	uc := newDispatcher(newFakeDeliveries(), newFakeReports(), nil)
+	uc := newDispatcher(newFakeDeliveries(), newFakeEvents(), nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := uc.Run(ctx, time.Hour); !errors.Is(err, context.Canceled) {

@@ -71,11 +71,11 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 
 	api := &httpapi.Server{
 		Auth: app.Authenticator{Store: st.credentials, Hasher: hash.SHA256{}},
-		Submit: app.SubmitReport{
-			Reports: st.reports,
-			Sinks:   sink.NewDirectory(cfg),
-			IDs:     id.Random{},
-			Clock:   systemClock{},
+		Submit: app.SubmitEvent{
+			Events: st.events,
+			Sinks:  sink.NewDirectory(cfg),
+			IDs:    id.Random{},
+			Clock:  systemClock{},
 		},
 		Logger: logger,
 	}
@@ -86,7 +86,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if *runDispatcher {
 		dispatcher := app.Dispatcher{
 			Deliveries:  st.deliveries,
-			Reports:     st.reports,
+			Events:      st.events,
 			Sinks:       sinks,
 			Clock:       systemClock{},
 			Lease:       time.Minute,
