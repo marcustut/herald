@@ -52,7 +52,7 @@ func testPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 // resetSchema drops every Herald table so each test starts from a clean slate.
 func resetSchema(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
-	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
+	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
 		t.Fatalf("reset schema: %v", err)
 	}
 }
@@ -73,7 +73,7 @@ func TestMigrateFresh(t *testing.T) {
 		t.Fatalf("migrate fresh: %v", err)
 	}
 
-	for _, table := range []string{"credentials", "events", "deliveries", "schema_migrations"} {
+	for _, table := range []string{"credentials", "events", "deliveries", "accounts", "tenants", "users", "projects", "destinations", "schema_migrations"} {
 		var ok bool
 		if err := pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&ok); err != nil || !ok {
 			t.Fatalf("table %s exists=%v err=%v", table, ok, err)
@@ -91,6 +91,13 @@ func TestMigrateFresh(t *testing.T) {
 	}
 	if name != "baseline" || sum != checksum(baselineSchema) || appliedAt.IsZero() {
 		t.Fatalf("migration row name=%q sum=%q applied_at=%v", name, sum, appliedAt)
+	}
+	if err := pool.QueryRow(ctx, `SELECT name, checksum FROM schema_migrations WHERE version = 2`).
+		Scan(&name, &sum); err != nil {
+		t.Fatalf("read ownership migration row: %v", err)
+	}
+	if name != "ownership" || sum != checksum(ownershipSchema) {
+		t.Fatalf("ownership migration row name=%q sum=%q", name, sum)
 	}
 
 	var hasReportID bool
@@ -111,8 +118,11 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	var first time.Time
-	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version = 1`).Scan(&first); err != nil {
+	var firstV1, firstV2 time.Time
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version = 1`).Scan(&firstV1); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version = 2`).Scan(&firstV2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,14 +130,20 @@ func TestMigrateIdempotent(t *testing.T) {
 		t.Fatalf("second migrate: %v", err)
 	}
 	var (
-		count  int
-		second time.Time
+		count              int
+		secondV1, secondV2 time.Time
 	)
-	if err := pool.QueryRow(ctx, `SELECT count(*), max(applied_at) FROM schema_migrations`).Scan(&count, &second); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 || !second.Equal(first) {
-		t.Fatalf("second run changed history: count=%d first=%v second=%v", count, first, second)
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version = 1`).Scan(&secondV1); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version = 2`).Scan(&secondV2); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 || !secondV1.Equal(firstV1) || !secondV2.Equal(firstV2) {
+		t.Fatalf("second run changed history: count=%d v1 %v->%v v2 %v->%v", count, firstV1, secondV1, firstV2, secondV2)
 	}
 }
 
@@ -178,7 +194,8 @@ func TestMigrateFromLegacyReports(t *testing.T) {
 }
 
 // Upgrade from a v1 Event schema that predates schema_migrations (no history
-// row) must record the baseline without touching existing data.
+// row) must record the baseline and add the ownership tables without touching
+// existing data.
 func TestMigrateFromEventSchema(t *testing.T) {
 	pool, ctx := testPool(t)
 	resetSchema(t, ctx, pool)
@@ -188,6 +205,10 @@ func TestMigrateFromEventSchema(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	insertEvent(t, ctx, pool, "evt_1", "axis", "k-1", now)
+	if _, err := pool.Exec(ctx, `INSERT INTO credentials (token_hash, tenant_id, kind, projects, created_at)
+		VALUES ('h1','owner','project',ARRAY['axis'],$1)`, now); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatalf("migrate over Event schema: %v", err)
@@ -195,15 +216,24 @@ func TestMigrateFromEventSchema(t *testing.T) {
 
 	var count int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE id='evt_1'`).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("data lost: count=%d err=%v", count, err)
+		t.Fatalf("event lost: count=%d err=%v", count, err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 1 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM credentials WHERE token_hash='h1'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("credential lost: count=%d err=%v", count, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("migration rows=%d err=%v", count, err)
+	}
+	for _, table := range []string{"accounts", "tenants", "users", "projects", "destinations"} {
+		var ok bool
+		if err := pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&ok); err != nil || !ok {
+			t.Fatalf("ownership table %s exists=%v err=%v", table, ok, err)
+		}
 	}
 }
 
 // Concurrent Migrate calls (as serve and dispatch would do at startup) must all
-// succeed and record exactly one row.
+// succeed and record each step exactly once.
 func TestMigrateConcurrent(t *testing.T) {
 	pool, ctx := testPool(t)
 	resetSchema(t, ctx, pool)
@@ -239,8 +269,8 @@ func TestMigrateConcurrent(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
-	if rows != 1 {
-		t.Fatalf("migration rows = %d, want 1", rows)
+	if rows != 2 {
+		t.Fatalf("migration rows = %d, want 2", rows)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE id='rep_1'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("data lost after concurrent rename: count=%d err=%v", count, err)
