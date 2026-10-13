@@ -64,7 +64,7 @@ func runLogin(ctx context.Context, args []string, stdin io.Reader, stdout, stder
 		return 1
 	}
 
-	path, err := credentials.Save(tok)
+	path, err := credentials.Save(gw, slug, tok)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1

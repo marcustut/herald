@@ -65,7 +65,7 @@ func TestLoginNoninteractiveToken(t *testing.T) {
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("credential mode = %o, want 0600", perm)
 	}
-	if got, _ := credentials.Token(); got != "herald_axis_secret" {
+	if got, _ := credentials.Lookup("https://gw.example.com", "axis"); got != "herald_axis_secret" {
 		t.Fatalf("stored token = %q", got)
 	}
 }
@@ -80,7 +80,7 @@ func TestLoginEnvTokenNoninteractive(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d err=%s", code, errOut)
 	}
-	if got, _ := credentials.Token(); got != "herald_axis_env" {
+	if got, _ := credentials.Lookup("https://gw.example.com", "axis"); got != "herald_axis_env" {
 		t.Fatalf("stored token = %q", got)
 	}
 }
@@ -99,7 +99,7 @@ func TestLoginInteractivePaste(t *testing.T) {
 	if !strings.Contains(out, "Paste a project token") {
 		t.Fatalf("expected a prompt: %q", out)
 	}
-	if got, _ := credentials.Token(); got != "herald_axis_pasted" {
+	if got, _ := credentials.Lookup("https://gw.example.com", "axis"); got != "herald_axis_pasted" {
 		t.Fatalf("stored token = %q", got)
 	}
 }
@@ -238,7 +238,7 @@ func TestLoginCloudMagicLink(t *testing.T) {
 	if mintCSRF != "csrf-xyz" {
 		t.Fatalf("mint csrf = %q", mintCSRF)
 	}
-	if got, _ := credentials.Token(); got != "herald_axis_cloud" {
+	if got, _ := credentials.Lookup(srv.URL, "axis"); got != "herald_axis_cloud" {
 		t.Fatalf("stored token = %q", got)
 	}
 }
@@ -279,7 +279,7 @@ func TestLoginEmailBeatsEnvToken(t *testing.T) {
 	if !magicHit {
 		t.Fatal("login did not run the magic-link flow: HERALD_TOKEN took precedence over --email")
 	}
-	if got, _ := credentials.Token(); got != "herald_axis_cloud" {
+	if got, _ := credentials.Lookup(srv.URL, "axis"); got != "herald_axis_cloud" {
 		t.Fatalf("stored token = %q, want the minted cloud token", got)
 	}
 }
@@ -351,7 +351,7 @@ func TestGatewayClientTokenPrecedence(t *testing.T) {
 		t.Fatal("expected an error when no token is configured")
 	}
 
-	if _, err := credentials.Save("herald_axis_fromfile"); err != nil {
+	if _, err := credentials.Save("https://gw.example.com", "axis", "herald_axis_fromfile"); err != nil {
 		t.Fatal(err)
 	}
 	cl, _, _, _, err := gatewayClient("")
@@ -369,6 +369,77 @@ func TestGatewayClientTokenPrecedence(t *testing.T) {
 	}
 	if cl.Token != "herald_axis_fromenv" {
 		t.Fatalf("token = %q, want env to win", cl.Token)
+	}
+}
+
+// TestGatewayClientPerProjectTokens is the core multi-project guarantee: each
+// project resolves its own stored token.
+func TestGatewayClientPerProjectTokens(t *testing.T) {
+	t.Setenv("HERALD_CONFIG_DIR", t.TempDir())
+	t.Setenv("HERALD_GATEWAY", "https://gw.example.com")
+	t.Setenv("HERALD_TOKEN", "")
+
+	if _, err := credentials.Save("https://gw.example.com", "axis", "tok_axis"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := credentials.Save("https://gw.example.com", "herald", "tok_herald"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ project, want string }{
+		{"axis", "tok_axis"},
+		{"herald", "tok_herald"},
+	} {
+		t.Setenv("HERALD_PROJECT", tc.project)
+		cl, _, _, _, err := gatewayClient("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cl.Token != tc.want {
+			t.Fatalf("project %s token = %q, want %q", tc.project, cl.Token, tc.want)
+		}
+	}
+}
+
+// TestLoginSecondProjectDoesNotClobberFirst mirrors the reported bug: logging in
+// for a second project must leave the first project's token intact.
+func TestLoginSecondProjectDoesNotClobberFirst(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HERALD_CONFIG_DIR", t.TempDir())
+	t.Setenv("HERALD_TOKEN", "")
+
+	for _, tc := range []struct{ project, token string }{
+		{"axis", "tok_axis"},
+		{"herald", "tok_herald"},
+	} {
+		code, _, errOut := runWithStdin(t, panicReader{},
+			"login", "--gateway", "https://gw.example.com", "--project", tc.project, "--token", tc.token)
+		if code != 0 {
+			t.Fatalf("%s login: code=%d err=%s", tc.project, code, errOut)
+		}
+	}
+
+	if got, _ := credentials.Lookup("https://gw.example.com", "axis"); got != "tok_axis" {
+		t.Fatalf("axis token = %q, want tok_axis (clobbered by the second login)", got)
+	}
+	if got, _ := credentials.Lookup("https://gw.example.com", "herald"); got != "tok_herald" {
+		t.Fatalf("herald token = %q", got)
+	}
+}
+
+// TestResolveTokenEnvBeatsFile: HERALD_TOKEN overrides the stored entry.
+func TestResolveTokenEnvBeatsFile(t *testing.T) {
+	t.Setenv("HERALD_CONFIG_DIR", t.TempDir())
+	if _, err := credentials.Save("https://gw.example.com", "axis", "tok_file"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERALD_TOKEN", "tok_env")
+	got, err := resolveToken("https://gw.example.com", "axis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "tok_env" {
+		t.Fatalf("resolveToken = %q, want tok_env", got)
 	}
 }
 
