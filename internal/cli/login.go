@@ -139,7 +139,7 @@ func cloudLogin(ctx context.Context, gateway, project, email string, stdin io.Re
 }
 
 func requestMagicLink(ctx context.Context, hc *http.Client, gateway, email string) error {
-	err := cloudCall(ctx, hc, http.MethodPost, gateway+"/cloud/v1/auth/magic-link", "",
+	err := cloudCall(ctx, hc, http.MethodPost, gateway+"/v1/auth/magic-link", "",
 		map[string]string{"email": email}, nil, http.StatusAccepted)
 	if err != nil {
 		return fmt.Errorf("request sign-in link: %w", err)
@@ -156,7 +156,7 @@ func redeemMagicLink(ctx context.Context, hc *http.Client, gateway, line string)
 		CSRF string `json:"csrfToken"`
 	}
 	err := cloudCall(ctx, hc, http.MethodGet,
-		gateway+"/cloud/v1/auth/callback?token="+url.QueryEscape(raw), "", nil, &out, http.StatusOK)
+		gateway+"/v1/auth/callback?token="+url.QueryEscape(raw), "", nil, &out, http.StatusOK)
 	if err != nil {
 		return "", fmt.Errorf("redeem sign-in link: %w", err)
 	}
@@ -174,7 +174,7 @@ func ensureProject(ctx context.Context, hc *http.Client, gateway, csrf, project 
 			ID string `json:"id"`
 		} `json:"projects"`
 	}
-	if err := cloudCall(ctx, hc, http.MethodGet, gateway+"/cloud/v1/projects", "", nil, &list, http.StatusOK); err != nil {
+	if err := cloudCall(ctx, hc, http.MethodGet, gateway+"/v1/projects", "", nil, &list, http.StatusOK); err != nil {
 		return fmt.Errorf("list projects: %w", err)
 	}
 	for _, p := range list.Projects {
@@ -182,7 +182,7 @@ func ensureProject(ctx context.Context, hc *http.Client, gateway, csrf, project 
 			return nil
 		}
 	}
-	err := cloudCall(ctx, hc, http.MethodPost, gateway+"/cloud/v1/projects", csrf,
+	err := cloudCall(ctx, hc, http.MethodPost, gateway+"/v1/projects", csrf,
 		map[string]string{"id": project, "name": project}, nil, http.StatusCreated)
 	if err != nil {
 		return fmt.Errorf("create project: %w", err)
@@ -195,7 +195,7 @@ func mintProjectToken(ctx context.Context, hc *http.Client, gateway, csrf, proje
 		Token string `json:"token"`
 	}
 	err := cloudCall(ctx, hc, http.MethodPost,
-		gateway+"/cloud/v1/projects/"+url.PathEscape(project)+"/token", csrf, nil, &out, http.StatusCreated)
+		gateway+"/v1/projects/"+url.PathEscape(project)+"/token", csrf, nil, &out, http.StatusCreated)
 	if err != nil {
 		return "", fmt.Errorf("mint project token: %w", err)
 	}
@@ -223,7 +223,7 @@ func magicToken(line string) string {
 // HERALD_TOKEN instead.
 func promptToken(stdin io.Reader, stdout io.Writer, gateway string) (string, error) {
 	fmt.Fprintf(stdout, "Paste a project token for %s\n", gateway)
-	fmt.Fprintf(stdout, "  cloud: create one at %s/cloud/projects, or re-run with --email to sign in\n", gateway)
+	fmt.Fprintf(stdout, "  cloud: create one at %s/dashboard, or re-run with --email to sign in\n", gateway)
 	fmt.Fprintln(stdout, "  self-host: ask the gateway operator, or run `herald token create --project <name>` on the gateway host")
 	fmt.Fprint(stdout, "token: ")
 	line, err := readLine(stdin)

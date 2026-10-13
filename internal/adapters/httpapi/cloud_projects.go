@@ -17,15 +17,15 @@ import (
 // from the request, so one account can never address another's rows. The HTML
 // page is a thin shell over the JSON routes.
 func (c *Cloud) registerProjects(mux *http.ServeMux) {
-	mux.HandleFunc("GET /cloud/projects", c.handleProjectsPage)
-	mux.HandleFunc("GET /cloud/v1/projects", c.handleListProjects)
-	mux.HandleFunc("POST /cloud/v1/projects", c.handleCreateProject)
-	mux.HandleFunc("DELETE /cloud/v1/projects/{project}", c.handleDeleteProject)
-	mux.HandleFunc("GET /cloud/v1/tokens", c.handleListTokens)
-	mux.HandleFunc("POST /cloud/v1/tokens", c.handleCreateScopedToken)
-	mux.HandleFunc("DELETE /cloud/v1/tokens/{id}", c.handleRevokeToken)
-	mux.HandleFunc("POST /cloud/v1/projects/{project}/token", c.handleCreateProjectToken)
-	mux.HandleFunc("POST /cloud/v1/projects/{project}/token/rotate", c.handleRotateProjectToken)
+	mux.HandleFunc("GET /dashboard", c.handleProjectsPage)
+	mux.HandleFunc("GET /v1/projects", c.handleListProjects)
+	mux.HandleFunc("POST /v1/projects", c.handleCreateProject)
+	mux.HandleFunc("DELETE /v1/projects/{project}", c.handleDeleteProject)
+	mux.HandleFunc("GET /v1/tokens", c.handleListTokens)
+	mux.HandleFunc("POST /v1/tokens", c.handleCreateScopedToken)
+	mux.HandleFunc("DELETE /v1/tokens/{id}", c.handleRevokeToken)
+	mux.HandleFunc("POST /v1/projects/{project}/token", c.handleCreateProjectToken)
+	mux.HandleFunc("POST /v1/projects/{project}/token/rotate", c.handleRotateProjectToken)
 }
 
 type projectPayload struct {
@@ -529,14 +529,14 @@ h2{margin-top:2rem}
       tr.appendChild(td(new Date(p.createdAt).toLocaleString()));
       var actions = document.createElement("td");
       actions.appendChild(button("Create token", function () {
-        return api("POST", "/cloud/v1/projects/" + encodeURIComponent(p.id) + "/token").then(showToken);
+        return api("POST", "/v1/projects/" + encodeURIComponent(p.id) + "/token").then(showToken);
       }));
       actions.appendChild(button("Rotate", function () {
-        return api("POST", "/cloud/v1/projects/" + encodeURIComponent(p.id) + "/token/rotate").then(showToken).then(reload);
+        return api("POST", "/v1/projects/" + encodeURIComponent(p.id) + "/token/rotate").then(showToken).then(reload);
       }));
       actions.appendChild(button("Delete", function () {
         if (!confirm("Delete project " + p.id + "?")) { return Promise.resolve(); }
-        return api("DELETE", "/cloud/v1/projects/" + encodeURIComponent(p.id)).then(reload);
+        return api("DELETE", "/v1/projects/" + encodeURIComponent(p.id)).then(reload);
       }));
       tr.appendChild(actions);
       body.appendChild(tr);
@@ -556,7 +556,7 @@ h2{margin-top:2rem}
       var actions = document.createElement("td");
       if (!t.revokedAt) {
         actions.appendChild(button("Revoke", function () {
-          return api("DELETE", "/cloud/v1/tokens/" + encodeURIComponent(t.id)).then(reload);
+          return api("DELETE", "/v1/tokens/" + encodeURIComponent(t.id)).then(reload);
         }));
       }
       tr.appendChild(actions);
@@ -610,7 +610,7 @@ h2{margin-top:2rem}
       limit: PAGE,
       offset: eventsOffset
     };
-    return api("GET", "/cloud/v1/events" + qs(params)).then(function (d) {
+    return api("GET", "/v1/events" + qs(params)).then(function (d) {
       var events = d.events || [];
       renderEvents(events);
       eventsHasMore = !!(d.page && d.page.hasMore);
@@ -645,7 +645,7 @@ h2{margin-top:2rem}
       limit: PAGE,
       offset: deliveriesOffset
     };
-    return api("GET", "/cloud/v1/deliveries" + qs(params)).then(function (d) {
+    return api("GET", "/v1/deliveries" + qs(params)).then(function (d) {
       var rows = d.deliveries || [];
       renderDeliveries(rows);
       deliveriesHasMore = !!(d.page && d.page.hasMore);
@@ -669,7 +669,7 @@ h2{margin-top:2rem}
   function loadDestinations(projects) {
     if (!projects.length) { renderDestinations([]); return Promise.resolve(); }
     return Promise.all(projects.map(function (p) {
-      return api("GET", "/cloud/v1/projects/" + encodeURIComponent(p.id) + "/destinations")
+      return api("GET", "/v1/projects/" + encodeURIComponent(p.id) + "/destinations")
         .then(function (d) {
           return (d.destinations || []).map(function (x) { x.project = p.id; return x; });
         })
@@ -682,13 +682,13 @@ h2{margin-top:2rem}
   }
   function load() {
     return Promise.all([
-      api("GET", "/cloud/v1/projects").then(function (d) {
+      api("GET", "/v1/projects").then(function (d) {
         var projects = d.projects || [];
         renderProjects(projects);
         fillProjectSelects(projects);
         return loadDestinations(projects);
       }),
-      api("GET", "/cloud/v1/tokens").then(function (d) { renderTokens(d.tokens || []); }),
+      api("GET", "/v1/tokens").then(function (d) { renderTokens(d.tokens || []); }),
       loadEvents(true),
       loadDeliveries(true)
     ]).catch(function (e) { notice(e.message); });
@@ -696,7 +696,7 @@ h2{margin-top:2rem}
   document.getElementById("new-project").addEventListener("submit", function (ev) {
     ev.preventDefault();
     var f = ev.target;
-    api("POST", "/cloud/v1/projects", {id: f.id.value, name: f.name.value}).then(function () {
+    api("POST", "/v1/projects", {id: f.id.value, name: f.name.value}).then(function () {
       f.reset();
       return reload();
     }).catch(function (e) { notice(e.message); });
@@ -705,7 +705,7 @@ h2{margin-top:2rem}
     ev.preventDefault();
     var f = ev.target;
     var projects = f.projects.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
-    api("POST", "/cloud/v1/tokens", {projects: projects}).then(showToken).catch(function (e) { notice(e.message); });
+    api("POST", "/v1/tokens", {projects: projects}).then(showToken).catch(function (e) { notice(e.message); });
   });
   document.getElementById("events-filter").addEventListener("submit", function (ev) {
     ev.preventDefault();

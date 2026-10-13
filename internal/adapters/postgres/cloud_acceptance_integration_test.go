@@ -134,7 +134,7 @@ func (h *acceptanceHarness) createProject(t *testing.T, client *http.Client, csr
 			ID string `json:"id"`
 		} `json:"project"`
 	}
-	got := h.json(t, client, http.MethodPost, "/cloud/v1/projects", csrf,
+	got := h.json(t, client, http.MethodPost, "/v1/projects", csrf,
 		fmt.Sprintf(`{"id":%q,"name":%q}`, id, name), &out)
 	if got != http.StatusCreated || out.Project.ID != id {
 		t.Fatalf("create project %s = %d id=%q, want 201", id, got, out.Project.ID)
@@ -146,7 +146,7 @@ func (h *acceptanceHarness) mintToken(t *testing.T, client *http.Client, csrf, p
 	var out struct {
 		Token string `json:"token"`
 	}
-	got := h.json(t, client, http.MethodPost, "/cloud/v1/projects/"+project+"/token", csrf, "", &out)
+	got := h.json(t, client, http.MethodPost, "/v1/projects/"+project+"/token", csrf, "", &out)
 	if got != http.StatusCreated || out.Token == "" {
 		t.Fatalf("mint token for %s = %d token=%q, want 201", project, got, out.Token)
 	}
@@ -160,7 +160,7 @@ func (h *acceptanceHarness) createDestination(t *testing.T, client *http.Client,
 			ID string `json:"id"`
 		} `json:"destination"`
 	}
-	got := h.json(t, client, http.MethodPost, "/cloud/v1/projects/"+project+"/destinations", csrf,
+	got := h.json(t, client, http.MethodPost, "/v1/projects/"+project+"/destinations", csrf,
 		fmt.Sprintf(`{"kind":%q,"target":%q}`, kind, target), &out)
 	if got != http.StatusCreated || out.Destination.ID == "" {
 		t.Fatalf("create %s destination for %s = %d id=%q, want 201", kind, project, got, out.Destination.ID)
@@ -173,7 +173,7 @@ func (h *acceptanceHarness) createDestination(t *testing.T, client *http.Client,
 func (h *acceptanceHarness) verifyLastDestination(t *testing.T, client *http.Client) {
 	t.Helper()
 	raw := h.mail.lastToken(t)
-	resp := h.get(t, client, "/cloud/v1/destinations/verify?token="+url.QueryEscape(raw))
+	resp := h.get(t, client, "/v1/destinations/verify?token="+url.QueryEscape(raw))
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("verify destination = %d, want 200", resp.StatusCode)
@@ -281,17 +281,17 @@ func TestIntegrationM2CloudAcceptance(t *testing.T) {
 
 	// B cannot read A's destinations, mint a token for A's project, delete A's
 	// project, or revoke A's token: every one is a 404, never another's row.
-	if got := h.json(t, bob, http.MethodGet, "/cloud/v1/projects/axis/destinations", "", "", nil); got != http.StatusNotFound {
+	if got := h.json(t, bob, http.MethodGet, "/v1/projects/axis/destinations", "", "", nil); got != http.StatusNotFound {
 		t.Fatalf("bob read alice destinations = %d, want 404", got)
 	}
-	if got := h.json(t, bob, http.MethodPost, "/cloud/v1/projects/axis/token", bobID.CSRF, "", nil); got != http.StatusNotFound {
+	if got := h.json(t, bob, http.MethodPost, "/v1/projects/axis/token", bobID.CSRF, "", nil); got != http.StatusNotFound {
 		t.Fatalf("bob mint alice token = %d, want 404", got)
 	}
-	if got := h.json(t, bob, http.MethodDelete, "/cloud/v1/projects/axis", bobID.CSRF, "", nil); got != http.StatusNotFound {
+	if got := h.json(t, bob, http.MethodDelete, "/v1/projects/axis", bobID.CSRF, "", nil); got != http.StatusNotFound {
 		t.Fatalf("bob delete alice project = %d, want 404", got)
 	}
 	aliceTokenID := hash.SHA256{}.Hash(aliceToken)
-	if got := h.json(t, bob, http.MethodDelete, "/cloud/v1/tokens/"+aliceTokenID, bobID.CSRF, "", nil); got != http.StatusNotFound {
+	if got := h.json(t, bob, http.MethodDelete, "/v1/tokens/"+aliceTokenID, bobID.CSRF, "", nil); got != http.StatusNotFound {
 		t.Fatalf("bob revoke alice token = %d, want 404", got)
 	}
 

@@ -183,7 +183,7 @@ func TestRequestMagicLinkStoresOnlyHash(t *testing.T) {
 	if len(mail.msgs) != 1 || mail.msgs[0].To != "User@example.com" {
 		t.Fatalf("mailed to %+v", mail.msgs)
 	}
-	if !strings.Contains(mail.msgs[0].Text, "https://cloud.example.com/cloud/v1/auth/callback?token=") {
+	if !strings.Contains(mail.msgs[0].Text, "https://cloud.example.com/v1/auth/callback?token=") {
 		t.Fatalf("mail text = %q", mail.msgs[0].Text)
 	}
 }

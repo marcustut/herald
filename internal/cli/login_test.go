@@ -178,7 +178,7 @@ func TestLoginCloudMagicLink(t *testing.T) {
 	var magicEmail, callbackToken, createdID, createdWithCSRF, mintCSRF string
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /cloud/v1/auth/magic-link", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/auth/magic-link", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Email string `json:"email"`
 		}
@@ -187,15 +187,15 @@ func TestLoginCloudMagicLink(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"status":"sent"}`))
 	})
-	mux.HandleFunc("GET /cloud/v1/auth/callback", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/auth/callback", func(w http.ResponseWriter, r *http.Request) {
 		callbackToken = r.URL.Query().Get("token")
 		http.SetCookie(w, &http.Cookie{Name: "herald_session", Value: "sess", Path: "/"})
 		_, _ = w.Write([]byte(`{"csrfToken":"csrf-xyz","user":{"email":"me@example.com"}}`))
 	})
-	mux.HandleFunc("GET /cloud/v1/projects", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /v1/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"projects":[{"id":"other"}]}`))
 	})
-	mux.HandleFunc("POST /cloud/v1/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/projects", func(w http.ResponseWriter, r *http.Request) {
 		createdWithCSRF = r.Header.Get("X-CSRF-Token")
 		var body struct {
 			ID string `json:"id"`
@@ -205,7 +205,7 @@ func TestLoginCloudMagicLink(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"project":{"id":"axis"}}`))
 	})
-	mux.HandleFunc("POST /cloud/v1/projects/axis/token", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/projects/axis/token", func(w http.ResponseWriter, r *http.Request) {
 		mintCSRF = r.Header.Get("X-CSRF-Token")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"token":"herald_axis_cloud","kind":"project","projects":["axis"]}`))
@@ -218,7 +218,7 @@ func TestLoginCloudMagicLink(t *testing.T) {
 	t.Setenv("HERALD_CONFIG_DIR", t.TempDir())
 	t.Setenv("HERALD_TOKEN", "")
 
-	link := srv.URL + "/cloud/v1/auth/callback?token=link-token-123\n"
+	link := srv.URL + "/v1/auth/callback?token=link-token-123\n"
 	code, out, errOut := run(t, link, "login", "--gateway", srv.URL, "--project", "axis", "--email", "me@example.com")
 	if code != 0 {
 		t.Fatalf("code=%d err=%s", code, errOut)
@@ -246,20 +246,20 @@ func TestLoginCloudMagicLink(t *testing.T) {
 func TestLoginCloudReusesExistingProject(t *testing.T) {
 	created := false
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /cloud/v1/auth/magic-link", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /v1/auth/magic-link", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 	})
-	mux.HandleFunc("GET /cloud/v1/auth/callback", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /v1/auth/callback", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"csrfToken":"c"}`))
 	})
-	mux.HandleFunc("GET /cloud/v1/projects", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /v1/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"projects":[{"id":"axis"}]}`))
 	})
-	mux.HandleFunc("POST /cloud/v1/projects", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /v1/projects", func(w http.ResponseWriter, _ *http.Request) {
 		created = true
 		w.WriteHeader(http.StatusCreated)
 	})
-	mux.HandleFunc("POST /cloud/v1/projects/axis/token", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /v1/projects/axis/token", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"token":"herald_axis_cloud"}`))
 	})

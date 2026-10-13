@@ -62,7 +62,7 @@ herald login --gateway https://cloud.example.com --project axis --email you@exam
 ```
 
 `herald send` then finds the token automatically. See
-[cloud-auth.md](cloud-auth.md#cli-login).
+[control-plane.md](control-plane.md#cli-login).
 
 ## 3. Initialize the project (≈1 min)
 

@@ -129,5 +129,5 @@ tracking cookies.
 **Why.** The beta needs to know whether invited people reach a first
 notification and come back, and how long that takes, so we can fix the funnel.
 Counts and durations answer that without identifying anyone. Account deletion
-(`DELETE /cloud/v1/account`) cascades the account's rows away, so a deleted
+(`DELETE /v1/account`) cascades the account's rows away, so a deleted
 account disappears from the funnel too.

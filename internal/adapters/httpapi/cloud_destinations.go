@@ -19,11 +19,11 @@ func (c *Cloud) registerDestinations(mux *http.ServeMux) {
 	if c.Destinations == nil {
 		return
 	}
-	mux.HandleFunc("GET /cloud/v1/projects/{project}/destinations", c.handleListDestinations)
-	mux.HandleFunc("POST /cloud/v1/projects/{project}/destinations", c.handleCreateDestination)
-	mux.HandleFunc("DELETE /cloud/v1/projects/{project}/destinations/{id}", c.handleDeleteDestination)
-	mux.HandleFunc("POST /cloud/v1/projects/{project}/destinations/{id}/verify", c.handleRequestVerification)
-	mux.HandleFunc("GET /cloud/v1/destinations/verify", c.handleConfirmVerification)
+	mux.HandleFunc("GET /v1/projects/{project}/destinations", c.handleListDestinations)
+	mux.HandleFunc("POST /v1/projects/{project}/destinations", c.handleCreateDestination)
+	mux.HandleFunc("DELETE /v1/projects/{project}/destinations/{id}", c.handleDeleteDestination)
+	mux.HandleFunc("POST /v1/projects/{project}/destinations/{id}/verify", c.handleRequestVerification)
+	mux.HandleFunc("GET /v1/destinations/verify", c.handleConfirmVerification)
 }
 
 type destinationPayload struct {

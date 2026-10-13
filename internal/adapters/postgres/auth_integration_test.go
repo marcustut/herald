@@ -132,7 +132,7 @@ type cloudIdentity struct {
 // signIn runs the full magic-link round trip for one client.
 func (h *cloudHarness) signIn(t *testing.T, client *http.Client, email string) cloudIdentity {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, h.server.URL+"/cloud/v1/auth/magic-link",
+	req, _ := http.NewRequest(http.MethodPost, h.server.URL+"/v1/auth/magic-link",
 		strings.NewReader(`{"email":"`+email+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
@@ -144,7 +144,7 @@ func (h *cloudHarness) signIn(t *testing.T, client *http.Client, email string) c
 		t.Fatalf("magic-link status = %d", resp.StatusCode)
 	}
 	raw := h.mail.lastToken(t)
-	cb, err := client.Get(h.server.URL + "/cloud/v1/auth/callback?token=" + url.QueryEscape(raw))
+	cb, err := client.Get(h.server.URL + "/v1/auth/callback?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestIntegrationMagicLinkSessionLifecycle(t *testing.T) {
 	client := h.newClient(t)
 	id := h.signIn(t, client, "alice@example.com")
 
-	me := h.get(t, client, "/cloud/v1/me")
+	me := h.get(t, client, "/v1/me")
 	me.Body.Close()
 	if me.StatusCode != http.StatusOK {
 		t.Fatalf("/me = %d, want 200", me.StatusCode)
@@ -201,7 +201,7 @@ func TestIntegrationMagicLinkSessionLifecycle(t *testing.T) {
 
 	// The same link cannot be redeemed twice.
 	raw := h.mail.lastToken(t)
-	replay, err := client.Get(h.server.URL + "/cloud/v1/auth/callback?token=" + url.QueryEscape(raw))
+	replay, err := client.Get(h.server.URL + "/v1/auth/callback?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestIntegrationMagicLinkSessionLifecycle(t *testing.T) {
 	}
 
 	// Sign out revokes the session server-side.
-	outReq, _ := http.NewRequest(http.MethodPost, h.server.URL+"/cloud/v1/auth/signout", nil)
+	outReq, _ := http.NewRequest(http.MethodPost, h.server.URL+"/v1/auth/signout", nil)
 	outReq.Header.Set(httpapi.CSRFHeader, id.CSRF)
 	out, err := client.Do(outReq)
 	if err != nil {
@@ -221,7 +221,7 @@ func TestIntegrationMagicLinkSessionLifecycle(t *testing.T) {
 	if out.StatusCode != http.StatusNoContent {
 		t.Fatalf("signout = %d, want 204", out.StatusCode)
 	}
-	after := h.get(t, client, "/cloud/v1/me")
+	after := h.get(t, client, "/v1/me")
 	after.Body.Close()
 	if after.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("/me after signout = %d, want 401", after.StatusCode)
@@ -244,7 +244,7 @@ func TestIntegrationAccountDeletion(t *testing.T) {
 		t.Fatalf("put project: %v", err)
 	}
 
-	req, _ := http.NewRequest(http.MethodDelete, h.server.URL+"/cloud/v1/account", nil)
+	req, _ := http.NewRequest(http.MethodDelete, h.server.URL+"/v1/account", nil)
 	req.Header.Set(httpapi.CSRFHeader, id.CSRF)
 	resp, err := client.Do(req)
 	if err != nil {

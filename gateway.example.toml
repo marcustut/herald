@@ -23,13 +23,14 @@ from_name = "Herald"
 
 # Hosted account surface (Herald Cloud). Off by default, so a self-hosted
 # deployment exposes no signup/sign-in routes at all. Enable it only on the
-# hosted control plane, with the absolute public origin the magic-link callback
-# points at; an https origin also makes the session cookie Secure. See
-# docs/cloud-auth.md.
+# hosted control plane; base_url is the public base the API is served under
+# (the magic-link callback path is appended to it, and it may include a prefix
+# such as /api). An https origin also makes the session cookie Secure. See
+# docs/control-plane.md.
 [cloud]
 enabled = false
 # base_url = "https://cloud.example.com"
-# Provider bounce/complaint webhook. When true, POST /cloud/v1/email/events
+# Provider bounce/complaint webhook. When true, POST /v1/email/events
 # ingests SES/SNS (or generic) notifications and suppresses hard-bounced or
 # complaining addresses. Requires HERALD_BOUNCE_WEBHOOK_SECRET and cloud.enabled.
 # See docs/deliverability.md.

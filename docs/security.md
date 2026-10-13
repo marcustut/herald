@@ -98,7 +98,7 @@ address that bounces hard can damage every tenant's sending. Herald therefore:
   removed destinations are refused the same way (see [Sinks are pinned
   server-side](#sinks-are-pinned-server-side)).
 - **Authenticates ingestion.** The provider bounce/complaint endpoint
-  (`POST /cloud/v1/email/events`) is off unless `[cloud] bounce_webhook` is set,
+  (`POST /v1/email/events`) is off unless `[cloud] bounce_webhook` is set,
   and requires the shared secret from `HERALD_BOUNCE_WEBHOOK_SECRET`, compared
   in constant time. It 404s like any absent cloud route when unconfigured, so a
   probe cannot tell it apart from a route that does not exist.

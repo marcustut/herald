@@ -154,7 +154,7 @@ func newDestFixture(t *testing.T) *destFixture {
 // the session owns.
 func (f *destFixture) tenantID(t *testing.T) domain.TenantID {
 	t.Helper()
-	resp := f.do(t, http.MethodGet, "/cloud/v1/me", "")
+	resp := f.do(t, http.MethodGet, "/v1/me", "")
 	defer resp.Body.Close()
 	var body struct {
 		User struct {
@@ -236,11 +236,11 @@ func TestDestinationRoutesAbsentWithoutUseCase(t *testing.T) {
 	ts := httptest.NewServer(api.Handler())
 	defer ts.Close()
 	for _, tc := range []struct{ method, path string }{
-		{http.MethodGet, "/cloud/v1/projects/alpha/destinations"},
-		{http.MethodPost, "/cloud/v1/projects/alpha/destinations"},
-		{http.MethodDelete, "/cloud/v1/projects/alpha/destinations/dst_x"},
-		{http.MethodPost, "/cloud/v1/projects/alpha/destinations/dst_x/verify"},
-		{http.MethodGet, "/cloud/v1/destinations/verify?token=x"},
+		{http.MethodGet, "/v1/projects/alpha/destinations"},
+		{http.MethodPost, "/v1/projects/alpha/destinations"},
+		{http.MethodDelete, "/v1/projects/alpha/destinations/dst_x"},
+		{http.MethodPost, "/v1/projects/alpha/destinations/dst_x/verify"},
+		{http.MethodGet, "/v1/destinations/verify?token=x"},
 	} {
 		req, _ := http.NewRequest(tc.method, ts.URL+tc.path, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -259,7 +259,7 @@ func TestCloudDestinationLifecycle(t *testing.T) {
 	csrf := f.signIn(t, "alice@example.com")
 	f.projects.PutProject(context.Background(), testHTTPProject("alpha", f.tenantID(t)))
 
-	create := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations",
+	create := f.send(t, http.MethodPost, "/v1/projects/alpha/destinations",
 		`{"kind":"email","target":"Ops@Example.COM"}`, csrf)
 	if create.StatusCode != http.StatusCreated {
 		t.Fatalf("create = %d, want 201", create.StatusCode)
@@ -270,7 +270,7 @@ func TestCloudDestinationLifecycle(t *testing.T) {
 	}
 
 	// List shows exactly the one destination.
-	list := f.do(t, http.MethodGet, "/cloud/v1/projects/alpha/destinations", "")
+	list := f.do(t, http.MethodGet, "/v1/projects/alpha/destinations", "")
 	if list.StatusCode != http.StatusOK {
 		t.Fatalf("list = %d", list.StatusCode)
 	}
@@ -290,7 +290,7 @@ func TestCloudDestinationLifecycle(t *testing.T) {
 	// Confirmation is token-only: a client with no session cookie can redeem it.
 	raw := f.verificationToken(t)
 	anon := f.server.Client()
-	confirm, err := anon.Get(f.server.URL + "/cloud/v1/destinations/verify?token=" + url.QueryEscape(raw))
+	confirm, err := anon.Get(f.server.URL + "/v1/destinations/verify?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestCloudDestinationLifecycle(t *testing.T) {
 	}
 	confirm.Body.Close()
 
-	list2 := f.do(t, http.MethodGet, "/cloud/v1/projects/alpha/destinations", "")
+	list2 := f.do(t, http.MethodGet, "/v1/projects/alpha/destinations", "")
 	var after struct {
 		Destinations []struct {
 			Verified bool `json:"verified"`
@@ -314,7 +314,7 @@ func TestCloudDestinationLifecycle(t *testing.T) {
 	}
 
 	// Delete removes it.
-	del := f.send(t, http.MethodDelete, "/cloud/v1/projects/alpha/destinations/"+dst.Destination.ID, "", csrf)
+	del := f.send(t, http.MethodDelete, "/v1/projects/alpha/destinations/"+dst.Destination.ID, "", csrf)
 	if del.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete = %d, want 204", del.StatusCode)
 	}
@@ -324,7 +324,7 @@ func TestCloudDestinationLifecycle(t *testing.T) {
 func TestCloudDestinationRequiresSessionAndCSRF(t *testing.T) {
 	f := newDestFixture(t)
 	// No session.
-	if resp := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, ""); resp.StatusCode != http.StatusUnauthorized {
+	if resp := f.send(t, http.MethodPost, "/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no session = %d, want 401", resp.StatusCode)
 	} else {
 		resp.Body.Close()
@@ -332,18 +332,18 @@ func TestCloudDestinationRequiresSessionAndCSRF(t *testing.T) {
 	csrf := f.signIn(t, "alice@example.com")
 	f.projects.PutProject(context.Background(), testHTTPProject("alpha", f.tenantID(t)))
 	// Session, no CSRF.
-	if resp := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, ""); resp.StatusCode != http.StatusForbidden {
+	if resp := f.send(t, http.MethodPost, "/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("no csrf = %d, want 403", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.send(t, http.MethodDelete, "/cloud/v1/projects/alpha/destinations/dst_x", "", ""); resp.StatusCode != http.StatusForbidden {
+	if resp := f.send(t, http.MethodDelete, "/v1/projects/alpha/destinations/dst_x", "", ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("delete no csrf = %d, want 403", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
 	// With the CSRF token the request reaches the use case.
-	if resp := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, csrf); resp.StatusCode != http.StatusCreated {
+	if resp := f.send(t, http.MethodPost, "/v1/projects/alpha/destinations", `{"kind":"email","target":"a@b.example"}`, csrf); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("valid csrf create = %d, want 201", resp.StatusCode)
 	} else {
 		resp.Body.Close()
@@ -358,7 +358,7 @@ func TestCloudDestinationOwnershipComesFromSession(t *testing.T) {
 	// even though the slug matches.
 	f.projects.PutProject(context.Background(), testHTTPProject("alpha", "ten_other"))
 
-	resp := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations",
+	resp := f.send(t, http.MethodPost, "/v1/projects/alpha/destinations",
 		`{"kind":"email","target":"ops@example.com"}`, csrf)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
@@ -373,13 +373,13 @@ func TestCloudConfirmVerificationRejectsExpired(t *testing.T) {
 	f := newDestFixture(t)
 	csrf := f.signIn(t, "alice@example.com")
 	f.projects.PutProject(context.Background(), testHTTPProject("alpha", f.tenantID(t)))
-	create := f.send(t, http.MethodPost, "/cloud/v1/projects/alpha/destinations",
+	create := f.send(t, http.MethodPost, "/v1/projects/alpha/destinations",
 		`{"kind":"email","target":"ops@example.com"}`, csrf)
 	create.Body.Close()
 	raw := f.verificationToken(t)
 	f.clock.t = f.clock.t.Add(app.DefaultVerificationTTL + time.Second)
 
-	confirm, err := f.server.Client().Get(f.server.URL + "/cloud/v1/destinations/verify?token=" + url.QueryEscape(raw))
+	confirm, err := f.server.Client().Get(f.server.URL + "/v1/destinations/verify?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}

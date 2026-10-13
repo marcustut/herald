@@ -75,7 +75,7 @@ func newEmailEventServer(t *testing.T, secret string) (*httptest.Server, *memSup
 
 func postEmailEvent(t *testing.T, ts *httptest.Server, secret, body string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, ts.URL+"/cloud/v1/email/events", strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/v1/email/events", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

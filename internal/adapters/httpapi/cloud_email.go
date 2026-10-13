@@ -26,7 +26,7 @@ func (c *Cloud) registerEmailEvents(mux *http.ServeMux) {
 	if c.EmailEvents == nil || c.BounceSecret == "" {
 		return
 	}
-	mux.HandleFunc("POST /cloud/v1/email/events", c.handleEmailEvent)
+	mux.HandleFunc("POST /v1/email/events", c.handleEmailEvent)
 }
 
 // handleEmailEvent ingests one provider notification: a delivery acceptance, a
