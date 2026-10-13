@@ -195,6 +195,80 @@ func TestLimitsInvalid(t *testing.T) {
 	}
 }
 
+func TestWebhookURLValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		ok   bool
+	}{
+		{"https", "https://hooks.example.com/x", true},
+		{"http", "http://127.0.0.1:9000/x", true},
+		{"file", "file:///etc/passwd", false},
+		{"ftp", "ftp://evil.example/x", false},
+		{"no host", "http://", false},
+		{"relative", "/x", false},
+		{"empty", "", false},
+		{"garbage", "://bad url", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := "[server]\naddr=\"x\"\ntenant=\"t\"\n[projects.a]\nsinks=[\"w\"]\n" +
+				"[sinks.w]\nkind=\"webhook\"\nurl=\"" + tt.url + "\"\n"
+			_, err := LoadGateway(writeTemp(t, body))
+			if tt.ok && err != nil {
+				t.Fatalf("url %q rejected: %v", tt.url, err)
+			}
+			if !tt.ok && err == nil {
+				t.Fatalf("url %q accepted", tt.url)
+			}
+		})
+	}
+}
+
+func TestSecurityWebhookAllowlist(t *testing.T) {
+	body := func(security, url string) string {
+		return "[server]\naddr=\"x\"\ntenant=\"t\"\n" + security +
+			"\n[projects.a]\nsinks=[\"w\"]\n[sinks.w]\nkind=\"webhook\"\nurl=\"" + url + "\"\n"
+	}
+	tests := []struct {
+		name     string
+		security string
+		url      string
+		ok       bool
+	}{
+		{"listed host", "[security]\nwebhook_allow_hosts=[\"hooks.example.com\"]", "https://hooks.example.com/x", true},
+		{"port in allowlist is ignored", "[security]\nwebhook_allow_hosts=[\"hooks.example.com:443\"]", "https://hooks.example.com/x", true},
+		{"case-insensitive", "[security]\nwebhook_allow_hosts=[\"HOOKS.EXAMPLE.COM\"]", "https://hooks.example.com/x", true},
+		{"unlisted host", "[security]\nwebhook_allow_hosts=[\"hooks.example.com\"]", "https://evil.example/x", false},
+		{"empty allowlist allows any host", "", "https://anything.example/x", true},
+		{"empty entry rejected", "[security]\nwebhook_allow_hosts=[\"\"]", "https://hooks.example.com/x", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadGateway(writeTemp(t, body(tt.security, tt.url)))
+			if tt.ok && err != nil {
+				t.Fatalf("rejected: %v", err)
+			}
+			if !tt.ok && err == nil {
+				t.Fatal("accepted, want error")
+			}
+		})
+	}
+}
+
+func TestSecurityAllowPrivateNetworks(t *testing.T) {
+	g, err := LoadGateway(writeTemp(t, validGateway+"\n[security]\nallow_private_networks = true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.Security.AllowPrivateNetworks {
+		t.Fatal("allow_private_networks not parsed")
+	}
+	if len(g.Security.WebhookAllowHosts) != 0 {
+		t.Fatalf("unexpected allowlist: %v", g.Security.WebhookAllowHosts)
+	}
+}
+
 func TestClient(t *testing.T) {
 	c, err := LoadClient(writeTemp(t, "project = \"axis\"\ngateway = \"https://h.example\"\n"))
 	if err != nil {

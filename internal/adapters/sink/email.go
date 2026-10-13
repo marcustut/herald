@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -27,8 +28,13 @@ type MailTransport interface {
 // smtpTransport submits over SMTP. When the server offers STARTTLS it upgrades
 // and verifies the certificate against tlsServerName — needed when dialling
 // loopback while the certificate is issued for the public hostname.
+//
+// allowPlaintext is true only for loopback targets. Every other host must offer
+// STARTTLS: without it the transport refuses before any mailbox or credential is
+// sent, so a downgrade to cleartext auth is never silent.
 type smtpTransport struct {
-	tlsServerName string
+	tlsServerName  string
+	allowPlaintext bool
 }
 
 func (t smtpTransport) Send(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
@@ -46,6 +52,8 @@ func (t smtpTransport) Send(addr string, auth smtp.Auth, from string, to []strin
 		if err := c.StartTLS(&tls.Config{ServerName: name, MinVersion: tls.VersionTLS12}); err != nil {
 			return err
 		}
+	} else if !t.allowPlaintext {
+		return errors.New("smtp: refusing plaintext session to non-loopback host (server does not offer STARTTLS)")
 	}
 	if auth != nil {
 		if ok, _ := c.Extension("AUTH"); !ok {
@@ -98,7 +106,7 @@ func NewEmail(id domain.SinkID, cfg EmailConfig) *Email {
 	return &Email{
 		sinkID:    id,
 		cfg:       cfg,
-		transport: smtpTransport{tlsServerName: cfg.TLSServerName},
+		transport: smtpTransport{tlsServerName: cfg.TLSServerName, allowPlaintext: isLoopbackHost(hostOf(cfg.Addr))},
 		now:       time.Now,
 	}
 }
@@ -171,11 +179,26 @@ func (e *Email) buildMessage(r domain.Event) ([]byte, error) {
 	return msg.Bytes(), nil
 }
 
+// hostOf splits the host from a host:port address, handling bracketed IPv6
+// literals, and returns the input unchanged when there is no port.
 func hostOf(addr string) string {
-	if i := strings.LastIndexByte(addr, ':'); i >= 0 {
-		return addr[:i]
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
 	}
 	return addr
+}
+
+// isLoopbackHost reports whether a mail host is loopback, where a submission
+// listener (e.g. Stalwart on 127.0.0.1:587) legitimately speaks plaintext.
+// Every other host requires STARTTLS.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // formatFrom renders the From header. An empty display name yields the bare
