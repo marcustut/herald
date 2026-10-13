@@ -29,10 +29,15 @@ CREATE INDEX deliveries_report ON deliveries (report_id);
 `
 
 // testPool returns a pool to HERALD_TEST_DATABASE_URL, skipping when unset.
+// When HERALD_TEST_REQUIRE_DATABASE is set (CI does this) a missing URL is a
+// hard failure, so DB-backed coverage cannot silently disappear from the build.
 func testPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 	t.Helper()
 	url := os.Getenv("HERALD_TEST_DATABASE_URL")
 	if url == "" {
+		if os.Getenv("HERALD_TEST_REQUIRE_DATABASE") != "" {
+			t.Fatal("HERALD_TEST_DATABASE_URL is required but empty (HERALD_TEST_REQUIRE_DATABASE is set)")
+		}
 		t.Skip("HERALD_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
