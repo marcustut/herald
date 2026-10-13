@@ -53,6 +53,32 @@ func (s *Ownership) Project(ctx context.Context, tenant domain.TenantID, id doma
 	return p, true, nil
 }
 
+func (s *Ownership) Projects(ctx context.Context, tenant domain.TenantID) ([]domain.Project, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, tenant_id, name, created_at FROM projects
+		WHERE tenant_id = $1
+		ORDER BY created_at DESC, id`, string(tenant))
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.Project
+	for rows.Next() {
+		var (
+			p             domain.Project
+			pid, tenantID string
+		)
+		if err := rows.Scan(&pid, &tenantID, &p.Name, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		p.ID = domain.ProjectID(pid)
+		p.TenantID = domain.TenantID(tenantID)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (s *Ownership) DeleteProject(ctx context.Context, tenant domain.TenantID, id domain.ProjectID) error {
 	// Destinations reference (tenant_id, id) with ON DELETE CASCADE, so a
 	// project delete removes only that tenant's project and its destinations.

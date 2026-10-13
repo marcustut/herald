@@ -33,6 +33,7 @@ const (
 // it exposes no accounts, signup or sign-in routes.
 type Cloud struct {
 	Auth         app.Auth
+	Projects     app.Projects
 	Limiter      app.LoginLimiter
 	CookieSecure bool
 	SessionTTL   time.Duration
@@ -45,6 +46,7 @@ func (c *Cloud) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /cloud/v1/auth/signout", c.handleSignOut)
 	mux.HandleFunc("GET /cloud/v1/me", c.handleMe)
 	mux.HandleFunc("DELETE /cloud/v1/account", c.handleDeleteAccount)
+	c.registerProjects(mux)
 }
 
 type magicLinkPayload struct {

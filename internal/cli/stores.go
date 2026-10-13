@@ -13,6 +13,9 @@ type stores struct {
 	credentials app.CredentialStore
 	events      app.EventStore
 	deliveries  app.DeliveryStore
+	// projects backs the hosted project/token surface; it is nil in
+	// dev/memory mode, which the cloud gate refuses anyway.
+	projects app.ProjectStore
 	// Hosted-auth stores are nil in dev/memory mode; the cloud surface requires
 	// a real database, so serve refuses to enable it without one.
 	identities  app.IdentityStore
@@ -45,6 +48,7 @@ func openStores(ctx context.Context, dsn string, dev bool, logger *slog.Logger) 
 		credentials: postgres.NewCredentials(pool),
 		events:      events,
 		deliveries:  events,
+		projects:    postgres.NewOwnership(pool),
 		identities:  postgres.NewIdentities(pool),
 		sessions:    postgres.NewSessions(pool),
 		loginTokens: postgres.NewLoginTokens(pool),

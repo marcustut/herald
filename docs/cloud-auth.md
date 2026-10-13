@@ -40,6 +40,15 @@ requests are scoped to the user's own tenant.
 | `GET`  | `/cloud/v1/me` | session | Return the signed-in user. |
 | `POST` | `/cloud/v1/auth/signout` | session + CSRF | Revoke the session and clear the cookie. |
 | `DELETE` | `/cloud/v1/account` | session + CSRF | Delete the account and everything it owns. |
+| `GET`  | `/cloud/projects` | session | Self-contained HTML page for projects and tokens. |
+| `GET`  | `/cloud/v1/projects` | session | List the tenant's projects. |
+| `POST` | `/cloud/v1/projects` | session + CSRF | Create a project from `{"id":"slug","name":"..."}`. |
+| `DELETE` | `/cloud/v1/projects/{project}` | session + CSRF | Delete a project (and its destinations). |
+| `GET`  | `/cloud/v1/tokens` | session | List token metadata (never the secret). |
+| `POST` | `/cloud/v1/tokens` | session + CSRF | Create a multi-project token from `{"projects":["a","b"]}`. |
+| `DELETE` | `/cloud/v1/tokens/{id}` | session + CSRF | Revoke token `id` (its one-way hash). |
+| `POST` | `/cloud/v1/projects/{project}/token` | session + CSRF | Create a project token; the raw secret is returned once. |
+| `POST` | `/cloud/v1/projects/{project}/token/rotate` | session + CSRF | Issue a new project token and revoke the old one(s). |
 
 A successful callback returns:
 
@@ -111,6 +120,30 @@ cleared. Signing in again with the same address provisions a fresh account.
 Account deletion is permanent — there is no export or soft-delete yet (see
 [ADR 0001](adr/0001-multi-tenant-ownership.md) open question 4).
 
+## Projects and tokens
+
+Once signed in, a user manages their own projects and API tokens over the
+session cookie. Ownership is always taken from the session's tenant — never from
+a request body — so one account can never read, mutate, or mint a token for
+another's project even knowing its slug. A cross-tenant address answers `404`,
+the same as a missing row.
+
+Creating a token returns the raw secret exactly once (`herald_...` for a
+project token, `heraldacct_...` for a multi-project one) with `Cache-Control:
+no-store`; only its hash is persisted, so the metadata list
+(`GET /cloud/v1/tokens`) reports an id, kind, projects, created, last-used and
+revoked time but can never reveal the secret. **Rotation** issues a replacement
+and revokes the previous project token(s) in one operation; **revocation** by id
+is immediate, because the sender's credential lookup sees the revoked row on its
+next request.
+
+The HTML page at `/cloud/projects` is a thin stdlib template over these JSON
+routes. It authenticates with the session cookie and sends the CSRF token
+(`X-CSRF-Token`) on every mutation; if the token is not already in the browser
+(after `#34` lands, sign-in will hand it over) the page offers a paste field.
+Every successful mutation is audited through the structured logger with the
+actor, tenant, project and action — never a raw secret.
+
 ## Self-host compatibility
 
 A deployment that never sets `[cloud]` is unchanged: no accounts surface, no
@@ -119,8 +152,9 @@ additive, so an existing Event database upgrades with no data loss.
 
 ## Deferred
 
-Not part of this milestone and deliberately not built here: project/token
-self-service APIs (#30), destination configuration and verification (#31),
-bounce/suppression handling (#32), the dashboard (#33), `herald login` (#34) and
-quotas (#35). Until #30 lands there is no HTTP surface that lists a user's
-projects; tenant scoping is enforced in the stores and covered by tests.
+Not part of this milestone and deliberately not built here: destination
+configuration and verification (#31), bounce/suppression handling (#32), the
+dashboard (#33), `herald login` (#34) and quotas (#35). The project/token
+self-service surface above is #30. Token `last_used_at` is part of the metadata
+contract but is not yet written on authentication, so it currently always reads
+empty.

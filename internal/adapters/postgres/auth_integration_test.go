@@ -51,18 +51,24 @@ func (m *authMailer) lastToken(t *testing.T) string {
 }
 
 // cloudHarness wires the real postgres auth stores and ownership store to the
-// HTTP cloud surface, with a fake mailer standing in for SMTP.
+// HTTP cloud surface, with a fake mailer standing in for SMTP. Auth and Submit
+// are wired too so a token issued through the projects surface can drive a real
+// event submission.
 type cloudHarness struct {
 	pool      *pgxpool.Pool
 	server    *httptest.Server
 	mail      *authMailer
 	ownership *postgres.Ownership
+	creds     *postgres.Credentials
 }
 
 func newCloudHarness(t *testing.T) *cloudHarness {
 	t.Helper()
 	pool, _ := openMigrated(t)
 	mail := &authMailer{}
+	clock := newFakeClock()
+	creds := postgres.NewCredentials(pool)
+	events := postgres.NewEvents(pool)
 	auth := app.Auth{
 		Identities: postgres.NewIdentities(pool),
 		Tokens:     postgres.NewLoginTokens(pool),
@@ -71,10 +77,29 @@ func newCloudHarness(t *testing.T) *cloudHarness {
 		Secrets:    secret.Generator{},
 		Hasher:     hash.SHA256{},
 		IDs:        id.Random{},
-		Clock:      newFakeClock(),
+		Clock:      clock,
 		LinkBase:   "https://cloud.example.com",
 	}
-	api := &httpapi.Server{Cloud: &httpapi.Cloud{Auth: auth, CookieSecure: true, SessionTTL: time.Hour}}
+	api := &httpapi.Server{
+		Auth: app.Authenticator{Store: creds, Hasher: hash.SHA256{}},
+		Submit: app.SubmitEvent{
+			Events: events,
+			Sinks:  fixedSinks{"email"},
+			IDs:    id.Random{},
+			Clock:  clock,
+		},
+		Cloud: &httpapi.Cloud{
+			Auth: auth,
+			Projects: app.Projects{
+				Store:       postgres.NewOwnership(pool),
+				Credentials: creds,
+				Issuer:      app.Issuer{Store: creds, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: clock},
+				Clock:       clock,
+			},
+			CookieSecure: true,
+			SessionTTL:   time.Hour,
+		},
+	}
 	ts := httptest.NewTLSServer(api.Handler())
 	t.Cleanup(ts.Close)
 	return &cloudHarness{
@@ -82,6 +107,7 @@ func newCloudHarness(t *testing.T) *cloudHarness {
 		server:    ts,
 		mail:      mail,
 		ownership: postgres.NewOwnership(pool),
+		creds:     creds,
 	}
 }
 
@@ -92,9 +118,7 @@ func (h *cloudHarness) newClient(t *testing.T) *http.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := h.server.Client()
-	client.Jar = jar
-	return client
+	return &http.Client{Transport: h.server.Client().Transport, Jar: jar}
 }
 
 type cloudIdentity struct {

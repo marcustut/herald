@@ -67,6 +67,19 @@ func (s *fakeStore) ProjectCredential(_ context.Context, tenant domain.TenantID,
 	return Credential{}, ErrCredentialNotFound
 }
 
+func (s *fakeStore) ByTenant(_ context.Context, tenant domain.TenantID) ([]Credential, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	var out []Credential
+	for _, c := range s.byHash {
+		if c.TenantID == tenant {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 func newIssuer(store *fakeStore) Issuer {
 	return Issuer{Store: store, Hasher: fakeHasher{}, Secrets: &seqSecrets{}, Clock: fakeClock{testNow}}
 }

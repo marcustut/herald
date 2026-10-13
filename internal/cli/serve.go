@@ -155,6 +155,12 @@ func cloudAPI(cfg config.Gateway, st stores, logger *slog.Logger) *httpapi.Cloud
 			Clock:      systemClock{},
 			LinkBase:   cfg.Cloud.BaseURL,
 		},
+		Projects: app.Projects{
+			Store:       st.projects,
+			Credentials: st.credentials,
+			Issuer:      app.Issuer{Store: st.credentials, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: systemClock{}},
+			Clock:       systemClock{},
+		},
 		Limiter:      memory.NewLoginLimiter(httpapi.DefaultAuthRequests, httpapi.DefaultAuthWindow, systemClock{}),
 		CookieSecure: strings.HasPrefix(cfg.Cloud.BaseURL, "https://"),
 		Logger:       logger,

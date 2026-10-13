@@ -49,6 +49,24 @@ func (s *Credentials) ProjectCredential(_ context.Context, tenant domain.TenantI
 	return app.Credential{}, app.ErrCredentialNotFound
 }
 
+func (s *Credentials) ByTenant(_ context.Context, tenant domain.TenantID) ([]app.Credential, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []app.Credential
+	for _, c := range s.byHash {
+		if c.TenantID == tenant {
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].Hash < out[j].Hash
+	})
+	return out, nil
+}
+
 var _ app.CredentialStore = (*Credentials)(nil)
 
 type eventKey struct {
