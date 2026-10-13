@@ -8,18 +8,18 @@
 addr = "127.0.0.1:8787"
 tenant = "owner"
 
-# Stalwart submission listener on the box. On marcustut/nixos the local domain
-# is marcustut.me, so the sender must be a real local mailbox (herald@…) and the
-# submission principal's email must match it (must-match-sender = true).
+# SMTP submission host. Prefer a hostname over an IP so STARTTLS can verify the
+# certificate — for Gmail, smtp.gmail.com:587 (see docs/smtp-gmail.md). The
+# sender must be an address these credentials may send as; many servers require
+# it to match the account.
 [smtp]
-addr = "127.0.0.1:587"
-from = "herald@marcustut.me"
+addr = "smtp.example.com:587"
+from = "herald@example.com"
 # Display name shown by mail clients. Defaults to "Herald" when omitted; set it
 # to "" to send the bare address instead.
 from_name = "Herald"
-# When dialling the submission listener by IP, verify STARTTLS against the
-# certificate's name (the box's cert is for mail.marcustut.me).
-server_name = "mail.marcustut.me"
+# Only needed when dialling an IP address: the certificate name to expect.
+# server_name = "mail.example.com"
 
 # Outbound-delivery hardening. A webhook URL only ever comes from this file;
 # these settings constrain those admin-configured URLs. Non-loopback SMTP
@@ -55,7 +55,7 @@ sinks = ["email", "slack"]
 
 [sinks.email]
 kind = "email"
-recipient = "marcus@marcustut.me"
+recipient = "you@example.com"
 
 [sinks.slack]
 kind = "webhook"
