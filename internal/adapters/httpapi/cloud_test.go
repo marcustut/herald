@@ -294,6 +294,46 @@ func (f *cloudFixture) signIn(t *testing.T, email string) string {
 	return out.CSRF
 }
 
+// TestCloudCallbackRedirectsBrowser proves a browser (Accept: text/html) is
+// sent on to the dashboard with the CSRF token in the fragment, while an API
+// client with no such Accept still gets the JSON session (see signIn).
+func TestCloudCallbackRedirectsBrowser(t *testing.T) {
+	f := newCloudFixture(t, nil)
+	resp := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"alice@example.com"}`)
+	resp.Body.Close()
+	raw := f.mail.lastToken(t)
+
+	req, err := http.NewRequest(http.MethodGet, f.server.URL+"/v1/auth/callback?token="+url.QueryEscape(raw), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	client := &http.Client{
+		Transport:     f.client.Transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	cb, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cb.Body.Close()
+	if cb.StatusCode != http.StatusSeeOther {
+		t.Fatalf("browser callback status = %d, want 303", cb.StatusCode)
+	}
+	if loc := cb.Header.Get("Location"); !strings.Contains(loc, "/dashboard#csrf=") {
+		t.Fatalf("redirect location = %q, want .../dashboard#csrf=...", loc)
+	}
+	var set bool
+	for _, ck := range cb.Cookies() {
+		if ck.Name == "herald_session" && ck.Value != "" {
+			set = true
+		}
+	}
+	if !set {
+		t.Fatal("session cookie not set on browser callback")
+	}
+}
+
 func TestCloudRoutesAbsentWhenDisabled(t *testing.T) {
 	api := &httpapi.Server{}
 	ts := httptest.NewServer(api.Handler())

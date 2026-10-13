@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/marcustut/herald/internal/app"
@@ -121,6 +123,14 @@ func (c *Cloud) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.setSessionCookie(w, sess.Raw)
+	// A browser (Accept: text/html) is sent on to the dashboard with the CSRF
+	// token in the URL fragment so it can make changes; an API client (no
+	// text/html Accept) gets the JSON session, as before.
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		dashboard := strings.TrimRight(c.Auth.LinkBase, "/") + "/dashboard#csrf=" + url.QueryEscape(sess.CSRF)
+		http.Redirect(w, r, dashboard, http.StatusSeeOther)
+		return
+	}
 	writeJSON(w, http.StatusOK, sessionDTO(sess))
 }
 

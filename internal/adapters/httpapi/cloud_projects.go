@@ -329,9 +329,8 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // HTML shell: the browser fetches the JSON routes with the session cookie and
 // sends the CSRF token, supplied once at sign-in, on every mutation.
 func (c *Cloud) handleProjectsPage(w http.ResponseWriter, r *http.Request) {
-	if _, ok := c.session(w, r); !ok {
-		return
-	}
+	// Rendered even without a session so the sign-in form is reachable; the
+	// page hides the dashboard sections until the JSON routes authenticate.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'")
@@ -382,6 +381,14 @@ h2{margin-top:2rem}
 <a class="skip" href="#main">Skip to content</a>
 <h1 id="main">Herald dashboard</h1>
 <p id="notice"></p>
+<div id="signin" hidden>
+  <p>Sign in with a single-use email link. Enter your address:</p>
+  <form id="signin-form" class="row">
+    <input name="email" type="email" placeholder="you@example.com" required>
+    <button type="submit">Email me a link</button>
+  </form>
+</div>
+<div id="dash" hidden>
 <div id="csrfboot" hidden>
   <p>Paste the CSRF token returned by sign-in to enable changes:</p>
   <div class="row"><input id="csrfinput" placeholder="CSRF token"><button id="csrfsave" type="button">Save</button></div>
@@ -468,6 +475,7 @@ h2{margin-top:2rem}
 <thead><tr><th>Project</th><th>Kind</th><th>Target</th><th>Status</th></tr></thead>
 <tbody id="destinations"></tbody></table>
 </div>
+</div>
 <script>
 (function () {
   var KEY = "herald_csrf";
@@ -485,15 +493,20 @@ h2{margin-top:2rem}
     if (csrf) { sessionStorage.setItem(KEY, csrf); refreshCsrfUi(); notice(""); }
   });
   refreshCsrfUi();
+  var API = location.pathname.replace(/\/dashboard$/, "");
+  function showSignin() { document.getElementById("signin").hidden = false; document.getElementById("dash").hidden = true; }
+  function showDash() { document.getElementById("signin").hidden = true; document.getElementById("dash").hidden = false; }
   function api(method, path, body) {
-    return fetch(path, {
+    return fetch(API + path, {
       method: method,
       headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf || ""},
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
-      if (r.status === 401) { location.reload(); throw new Error("not signed in"); }
+      if (r.status === 401) { showSignin(); throw new Error("not signed in"); }
       if (r.status === 204) { return null; }
-      return r.json().then(function (data) {
+      return r.text().then(function (t) {
+        var data = {};
+        try { data = t ? JSON.parse(t) : {}; } catch (e) { throw new Error("HTTP " + r.status); }
         if (!r.ok) { throw new Error((data.error && data.error.message) || ("HTTP " + r.status)); }
         return data;
       });
@@ -683,6 +696,7 @@ h2{margin-top:2rem}
   function load() {
     return Promise.all([
       api("GET", "/v1/projects").then(function (d) {
+        showDash();
         var projects = d.projects || [];
         renderProjects(projects);
         fillProjectSelects(projects);
@@ -693,6 +707,13 @@ h2{margin-top:2rem}
       loadDeliveries(true)
     ]).catch(function (e) { notice(e.message); });
   }
+  document.getElementById("signin-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var f = ev.target;
+    fetch(API + "/v1/auth/magic-link", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: f.email.value})})
+      .then(function (r) { if (!r.ok) { throw new Error("HTTP " + r.status); } notice("Check your inbox for a sign-in link."); })
+      .catch(function (e) { notice(e.message); });
+  });
   document.getElementById("new-project").addEventListener("submit", function (ev) {
     ev.preventDefault();
     var f = ev.target;
