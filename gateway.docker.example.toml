@@ -21,6 +21,17 @@ addr = "smtp.example.com:587"
 from = "herald@example.com"
 server_name = "smtp.example.com"
 
+# Outbound-delivery hardening (see docs/security.md). A webhook URL only ever
+# comes from this file. Non-loopback SMTP always requires STARTTLS with
+# certificate verification.
+[security]
+# Optional explicit host allowlist for webhook sinks (case-insensitive; a port
+# is ignored). When non-empty, every webhook host must be listed here.
+# webhook_allow_hosts = ["hooks.example.com"]
+# Allow webhook delivery to loopback/private/link-local addresses. Off by
+# default so a webhook cannot reach cloud metadata or intranet services.
+allow_private_networks = false
+
 # Submit limits, enforced per project. Omit to use the built-in bounded
 # defaults (60/1m, 2000/day, 20000/month); override per project with a
 # [projects.<name>.limits] table. See docs/rate-limiting.md.

@@ -20,6 +20,17 @@ from_name = "Herald"
 # certificate's name (the box's cert is for mail.marcustut.me).
 server_name = "mail.marcustut.me"
 
+# Outbound-delivery hardening. A webhook URL only ever comes from this file;
+# these settings constrain those admin-configured URLs. Non-loopback SMTP
+# always requires STARTTLS with certificate verification. See docs/security.md.
+[security]
+# Optional explicit host allowlist for webhook sinks (case-insensitive; a port
+# is ignored). When non-empty, every webhook host must be listed here.
+webhook_allow_hosts = ["hooks.slack.com"]
+# Allow webhook delivery to loopback/private/link-local addresses. Off by
+# default so a webhook cannot reach cloud metadata or intranet services.
+allow_private_networks = false
+
 # Submit limits, enforced per project at POST /v1/events. Values inherit the
 # built-in defaults (60/1m, 2000/day, 20000/month) when omitted. See
 # docs/rate-limiting.md.
