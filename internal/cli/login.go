@@ -52,10 +52,10 @@ func runLogin(ctx context.Context, args []string, stdin io.Reader, stdout, stder
 	switch {
 	case *token != "":
 		tok = *token
-	case os.Getenv("HERALD_TOKEN") != "":
-		tok = os.Getenv("HERALD_TOKEN")
 	case *email != "":
 		tok, err = cloudLogin(ctx, gw, slug, *email, stdin, stdout)
+	case os.Getenv("HERALD_TOKEN") != "":
+		tok = os.Getenv("HERALD_TOKEN")
 	default:
 		tok, err = promptToken(stdin, stdout, gw)
 	}
