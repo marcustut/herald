@@ -25,8 +25,8 @@ func (c *Cloud) registerDashboard(mux *http.ServeMux) {
 	if c.Events == nil {
 		return
 	}
-	mux.HandleFunc("GET /cloud/v1/events", c.handleListEvents)
-	mux.HandleFunc("GET /cloud/v1/deliveries", c.handleListDeliveries)
+	mux.HandleFunc("GET /v1/events", c.handleListEvents)
+	mux.HandleFunc("GET /v1/deliveries", c.handleListDeliveries)
 }
 
 // eventLogDTO is one event row. Title is redacted: a failure report can carry a

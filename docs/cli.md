@@ -139,7 +139,7 @@ creates the project if it does not exist, then mints a **single-project token**
 (least privilege) and discards the session. It never opens a browser, so it
 works on a headless host. Do not open the link in a browser first — the link is
 single-use, and the CLI needs to redeem it. See
-[docs/cloud-auth.md](cloud-auth.md#cli-login).
+[docs/control-plane.md](control-plane.md#cli-login).
 
 ### `herald send`
 

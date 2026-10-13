@@ -35,8 +35,9 @@ type Destinations struct {
 	Hasher   Hasher
 	IDs      IDGenerator
 	Clock    Clock
-	// LinkBase is the absolute origin the verification link points at, e.g.
-	// https://cloud.example.com. The verify path is appended to it.
+	// LinkBase is the public base under which the API is served, e.g.
+	// https://cloud.example.com or https://example.com/api. The verify
+	// path is appended to it.
 	LinkBase string
 	TokenTTL time.Duration
 }
@@ -182,7 +183,7 @@ func (d Destinations) tokenTTL() time.Duration {
 }
 
 func (d Destinations) verifyLink(raw string) string {
-	return strings.TrimRight(d.LinkBase, "/") + "/cloud/v1/destinations/verify?token=" + url.QueryEscape(raw)
+	return strings.TrimRight(d.LinkBase, "/") + "/v1/destinations/verify?token=" + url.QueryEscape(raw)
 }
 
 func verifyText(link string, project domain.ProjectID) string {

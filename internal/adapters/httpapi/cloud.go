@@ -54,11 +54,11 @@ type Cloud struct {
 }
 
 func (c *Cloud) register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /cloud/v1/auth/magic-link", c.handleMagicLink)
-	mux.HandleFunc("GET /cloud/v1/auth/callback", c.handleCallback)
-	mux.HandleFunc("POST /cloud/v1/auth/signout", c.handleSignOut)
-	mux.HandleFunc("GET /cloud/v1/me", c.handleMe)
-	mux.HandleFunc("DELETE /cloud/v1/account", c.handleDeleteAccount)
+	mux.HandleFunc("POST /v1/auth/magic-link", c.handleMagicLink)
+	mux.HandleFunc("GET /v1/auth/callback", c.handleCallback)
+	mux.HandleFunc("POST /v1/auth/signout", c.handleSignOut)
+	mux.HandleFunc("GET /v1/me", c.handleMe)
+	mux.HandleFunc("DELETE /v1/account", c.handleDeleteAccount)
 	c.registerProjects(mux)
 	c.registerDestinations(mux)
 	c.registerEmailEvents(mux)

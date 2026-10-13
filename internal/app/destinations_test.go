@@ -155,7 +155,7 @@ func TestCreateEmailDestinationStartsUnverified(t *testing.T) {
 	if rec.DestinationID != dst.ID || rec.TenantID != "ten_a" || rec.ProjectID != "alpha" {
 		t.Fatalf("verification record owner = %+v, want the destination's owner", rec)
 	}
-	if !strings.Contains(f.mail.msgs[0].Text, "/cloud/v1/destinations/verify?token=") {
+	if !strings.Contains(f.mail.msgs[0].Text, "/v1/destinations/verify?token=") {
 		t.Fatalf("mail text = %q", f.mail.msgs[0].Text)
 	}
 }

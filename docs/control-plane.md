@@ -1,7 +1,7 @@
-# Cloud accounts: sign-in, sessions and deletion
+# Control plane: sign-in, sessions and deletion
 
-Herald Cloud is the hosted control plane. It shares one binary, one host and one
-database with self-hosting; the account surface is compiled in but **gated** by
+The hosted control plane shares one binary, one host and one `/v1` API — the
+same versioned surface as event submission. It is compiled in but **gated** by
 config. With `cloud.enabled` unset or false (the self-host default) none of the
 routes below are registered and every path answers `404`, exactly as if the
 feature did not exist.
@@ -21,11 +21,12 @@ addr = "smtp.example.com:587"
 from = "no-reply@example.com"
 ```
 
-`base_url` is the absolute public origin the magic-link callback points at. The
-hosted server refuses to start if `cloud.enabled` is true without a valid
-`base_url` and a usable `[smtp]` `addr`/`from`. An `https` origin makes the
-session cookie `Secure`; the surface also requires a database (the in-memory
-`--dev` mode is refused).
+`base_url` is the public base under which the API is served; the magic-link
+callback path (`/v1/auth/callback`) is appended to it. It is an absolute URL and
+may include a path prefix such as `/api`. The hosted server refuses to start if
+`cloud.enabled` is true without a valid `base_url` and a usable `[smtp]`
+`addr`/`from`. An `https` origin makes the session cookie `Secure`; the surface
+also requires a database (the in-memory `--dev` mode is refused).
 
 Signing in the first time provisions one **account**, one **user** (keyed by the
 email) and one default **tenant**. The session carries that tenant, so hosted
@@ -35,20 +36,20 @@ requests are scoped to the user's own tenant.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/cloud/v1/auth/magic-link` | none | Request a single-use sign-in link for `{"email":"..."}`. Always `202` for a valid address. |
-| `GET`  | `/cloud/v1/auth/callback?token=...` | link token | Redeem the link, set the session cookie, return the CSRF token. |
-| `GET`  | `/cloud/v1/me` | session | Return the signed-in user. |
-| `POST` | `/cloud/v1/auth/signout` | session + CSRF | Revoke the session and clear the cookie. |
-| `DELETE` | `/cloud/v1/account` | session + CSRF | Delete the account and everything it owns. |
-| `GET`  | `/cloud/projects` | session | Self-contained HTML page for projects and tokens. |
-| `GET`  | `/cloud/v1/projects` | session | List the tenant's projects. |
-| `POST` | `/cloud/v1/projects` | session + CSRF | Create a project from `{"id":"slug","name":"..."}`. |
-| `DELETE` | `/cloud/v1/projects/{project}` | session + CSRF | Delete a project (and its destinations). |
-| `GET`  | `/cloud/v1/tokens` | session | List token metadata (never the secret). |
-| `POST` | `/cloud/v1/tokens` | session + CSRF | Create a multi-project token from `{"projects":["a","b"]}`. |
-| `DELETE` | `/cloud/v1/tokens/{id}` | session + CSRF | Revoke token `id` (its one-way hash). |
-| `POST` | `/cloud/v1/projects/{project}/token` | session + CSRF | Create a project token; the raw secret is returned once. |
-| `POST` | `/cloud/v1/projects/{project}/token/rotate` | session + CSRF | Issue a new project token and revoke the old one(s). |
+| `POST` | `/v1/auth/magic-link` | none | Request a single-use sign-in link for `{"email":"..."}`. Always `202` for a valid address. |
+| `GET`  | `/v1/auth/callback?token=...` | link token | Redeem the link, set the session cookie, return the CSRF token. |
+| `GET`  | `/v1/me` | session | Return the signed-in user. |
+| `POST` | `/v1/auth/signout` | session + CSRF | Revoke the session and clear the cookie. |
+| `DELETE` | `/v1/account` | session + CSRF | Delete the account and everything it owns. |
+| `GET`  | `/dashboard` | session | Self-contained HTML page for projects and tokens. |
+| `GET`  | `/v1/projects` | session | List the tenant's projects. |
+| `POST` | `/v1/projects` | session + CSRF | Create a project from `{"id":"slug","name":"..."}`. |
+| `DELETE` | `/v1/projects/{project}` | session + CSRF | Delete a project (and its destinations). |
+| `GET`  | `/v1/tokens` | session | List token metadata (never the secret). |
+| `POST` | `/v1/tokens` | session + CSRF | Create a multi-project token from `{"projects":["a","b"]}`. |
+| `DELETE` | `/v1/tokens/{id}` | session + CSRF | Revoke token `id` (its one-way hash). |
+| `POST` | `/v1/projects/{project}/token` | session + CSRF | Create a project token; the raw secret is returned once. |
+| `POST` | `/v1/projects/{project}/token/rotate` | session + CSRF | Issue a new project token and revoke the old one(s). |
 
 A successful callback returns:
 
@@ -70,11 +71,11 @@ never names an owner, and a project that belongs to another tenant resolves to
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET`  | `/cloud/v1/projects/{project}/destinations` | session | List the project's destinations. |
-| `POST` | `/cloud/v1/projects/{project}/destinations` | session + CSRF | Create one (`{"kind":"email"\|"webhook","target":"..."}`). |
-| `DELETE` | `/cloud/v1/projects/{project}/destinations/{id}` | session + CSRF | Remove a destination. |
-| `POST` | `/cloud/v1/projects/{project}/destinations/{id}/verify` | session + CSRF | Mail a fresh verification link (rate limited per IP). |
-| `GET`  | `/cloud/v1/destinations/verify?token=...` | link token | Confirm an email address. |
+| `GET`  | `/v1/projects/{project}/destinations` | session | List the project's destinations. |
+| `POST` | `/v1/projects/{project}/destinations` | session + CSRF | Create one (`{"kind":"email"\|"webhook","target":"..."}`). |
+| `DELETE` | `/v1/projects/{project}/destinations/{id}` | session + CSRF | Remove a destination. |
+| `POST` | `/v1/projects/{project}/destinations/{id}/verify` | session + CSRF | Mail a fresh verification link (rate limited per IP). |
+| `GET`  | `/v1/destinations/verify?token=...` | link token | Confirm an email address. |
 
 - **Email ownership must be proved.** Creating an email destination sends a
   single-use, hashed, short-lived link to the address; only when the mailbox
@@ -146,14 +147,14 @@ route for the hosted product.
 
 ## Rate limits
 
-`POST /cloud/v1/auth/magic-link` consumes one unit per client IP and one per
+`POST /v1/auth/magic-link` consumes one unit per client IP and one per
 target email in a fixed window (10/minute by default), answering `429` with
 `Retry-After` when exhausted. The per-IP key is the transport peer — forwarded
 headers are not trusted, so a caller cannot spoof its way around the limit.
 
 ## Account deletion
 
-`DELETE /cloud/v1/account` (session + CSRF) deletes the account. Foreign keys
+`DELETE /v1/account` (session + CSRF) deletes the account. Foreign keys
 cascade, so the user, tenants, projects, destinations and all sessions are
 removed in the same transaction; the response is `204` and the cookie is
 cleared. Signing in again with the same address provisions a fresh account.
@@ -171,13 +172,13 @@ the same as a missing row.
 Creating a token returns the raw secret exactly once (`herald_...` for a
 project token, `heraldacct_...` for a multi-project one) with `Cache-Control:
 no-store`; only its hash is persisted, so the metadata list
-(`GET /cloud/v1/tokens`) reports an id, kind, projects, created, last-used and
+(`GET /v1/tokens`) reports an id, kind, projects, created, last-used and
 revoked time but can never reveal the secret. **Rotation** issues a replacement
 and revokes the previous project token(s) in one operation; **revocation** by id
 is immediate, because the sender's credential lookup sees the revoked row on its
 next request.
 
-The HTML page at `/cloud/projects` is a thin stdlib template over these JSON
+The HTML page at `/dashboard` is a thin stdlib template over these JSON
 routes. It authenticates with the session cookie and sends the CSRF token
 (`X-CSRF-Token`) on every mutation; it accepts the token from the sign-in hash
 (`#csrf=…`) or from a paste field (`herald login` redeems the callback directly
@@ -188,7 +189,7 @@ actor, tenant, project and action — never a raw secret.
 ## Bounces, complaints and suppression
 
 Provider bounce and complaint notifications are ingested at
-`POST /cloud/v1/email/events`, shared-secret authenticated and replay-safe by
+`POST /v1/email/events`, shared-secret authenticated and replay-safe by
 provider event id. A hard bounce or a complaint adds the address to the
 platform-wide suppression list; the hosted delivery path then refuses it
 permanently. The route is only mounted under `[cloud] bounce_webhook = true`
@@ -207,16 +208,16 @@ herald login --gateway https://cloud.example.com --project axis --email you@exam
 ```
 
 1. The CLI `POST`s `{"email":"you@example.com"}` to
-   `/cloud/v1/auth/magic-link` and prints an instruction to paste the emailed
+   `/v1/auth/magic-link` and prints an instruction to paste the emailed
    link (or its token). It does not open the link, because the link is
    single-use and the CLI is the one that redeems it.
-2. The CLI `GET`s `/cloud/v1/auth/callback?token=…`, holding the session cookie
+2. The CLI `GET`s `/v1/auth/callback?token=…`, holding the session cookie
    in memory, and reads the CSRF token from the response.
-3. It lists `/cloud/v1/projects`; if `--project axis` is missing it creates it
-   (`POST /cloud/v1/projects`), so a brand-new account is provisioned with a
+3. It lists `/v1/projects`; if `--project axis` is missing it creates it
+   (`POST /v1/projects`), so a brand-new account is provisioned with a
    project in the same step.
 4. It mints a **single-project token** with
-   `POST /cloud/v1/projects/axis/token` (least privilege), drops the session, and
+   `POST /v1/projects/axis/token` (least privilege), drops the session, and
    writes the token to the `0600` credential file. The secret is never printed
    and never stored by the client except in that file.
 

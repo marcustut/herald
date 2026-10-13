@@ -48,8 +48,9 @@ type Auth struct {
 	Hasher     Hasher
 	IDs        IDGenerator
 	Clock      Clock
-	// LinkBase is the absolute origin the callback link points at, e.g.
-	// https://cloud.example.com. The callback path is appended to it.
+	// LinkBase is the public base under which the API is served, e.g.
+	// https://cloud.example.com or https://example.com/api. The callback
+	// path is appended to it.
 	LinkBase   string
 	LinkTTL    time.Duration
 	SessionTTL time.Duration
@@ -208,7 +209,7 @@ func (a Auth) newIDs() NewIdentityIDs {
 }
 
 func (a Auth) magicLink(raw string) string {
-	return strings.TrimRight(a.LinkBase, "/") + "/cloud/v1/auth/callback?token=" + url.QueryEscape(raw)
+	return strings.TrimRight(a.LinkBase, "/") + "/v1/auth/callback?token=" + url.QueryEscape(raw)
 }
 
 // tokenShapeOK rejects a value that cannot be one of our secrets before it

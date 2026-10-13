@@ -225,21 +225,31 @@ func TestDashboardRoutesAbsentWithoutLog(t *testing.T) {
 	api := &httpapi.Server{Cloud: &httpapi.Cloud{Auth: app.Auth{Mailer: &cloudMailer{}}}}
 	ts := httptest.NewServer(api.Handler())
 	defer ts.Close()
-	for _, path := range []string{"/cloud/v1/events", "/cloud/v1/deliveries"} {
-		resp, err := http.Get(ts.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("GET %s = %d, want 404 when no log is wired", path, resp.StatusCode)
-		}
+
+	// /v1/deliveries has no other route, so it is 404.
+	if got := getStatus(t, ts.URL+"/v1/deliveries"); got != http.StatusNotFound {
+		t.Errorf("GET /v1/deliveries = %d, want 404 when no log is wired", got)
 	}
+	// /v1/events shares its path with the report-token POST submission route,
+	// so an unregistered GET is 405 (method not allowed), not 404.
+	if got := getStatus(t, ts.URL+"/v1/events"); got != http.StatusMethodNotAllowed {
+		t.Errorf("GET /v1/events = %d, want 405 when no log is wired", got)
+	}
+}
+
+func getStatus(t *testing.T, url string) int {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
 }
 
 func TestDashboardRequiresSession(t *testing.T) {
 	f := newDashboardFixture(t)
-	for _, path := range []string{"/cloud/v1/events", "/cloud/v1/deliveries"} {
+	for _, path := range []string{"/v1/events", "/v1/deliveries"} {
 		if code := f.getJSON(t, path, nil); code != http.StatusUnauthorized {
 			t.Errorf("GET %s = %d, want 401", path, code)
 		}
@@ -249,7 +259,7 @@ func TestDashboardRequiresSession(t *testing.T) {
 func TestDashboardPageRendersReadOnlySections(t *testing.T) {
 	f := newDashboardFixture(t)
 	f.signIn(t, "alice@example.com")
-	resp := f.do(t, http.MethodGet, "/cloud/projects", "")
+	resp := f.do(t, http.MethodGet, "/dashboard", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("page = %d, want 200", resp.StatusCode)
@@ -285,7 +295,7 @@ func TestDashboardTenantIsolation(t *testing.T) {
 	// A client-supplied tenant and a project that belongs to another tenant
 	// must not widen visibility.
 	var body eventsBody
-	code := f.getJSON(t, "/cloud/v1/events?tenant=ten_evil&project=alpha", &body)
+	code := f.getJSON(t, "/v1/events?tenant=ten_evil&project=alpha", &body)
 	if code != http.StatusOK {
 		t.Fatalf("events = %d", code)
 	}
@@ -294,7 +304,7 @@ func TestDashboardTenantIsolation(t *testing.T) {
 	}
 
 	var deliveries deliveriesBody
-	code = f.getJSON(t, "/cloud/v1/deliveries?tenant=ten_evil", &deliveries)
+	code = f.getJSON(t, "/v1/deliveries?tenant=ten_evil", &deliveries)
 	if code != http.StatusOK {
 		t.Fatalf("deliveries = %d", code)
 	}
@@ -322,13 +332,13 @@ func TestDashboardFilters(t *testing.T) {
 	f.seedEvent(t, tenant, "beta", domain.StatusSuccess, base, "old", "")
 
 	var byStatus eventsBody
-	f.getJSON(t, "/cloud/v1/events?status=failure", &byStatus)
+	f.getJSON(t, "/v1/events?status=failure", &byStatus)
 	if len(byStatus.Events) != 1 || byStatus.Events[0].Status != "failure" {
 		t.Fatalf("status filter = %+v", byStatus.Events)
 	}
 
 	var byProject eventsBody
-	f.getJSON(t, "/cloud/v1/events?project=alpha", &byProject)
+	f.getJSON(t, "/v1/events?project=alpha", &byProject)
 	if len(byProject.Events) != 2 {
 		t.Fatalf("project filter = %+v", byProject.Events)
 	}
@@ -336,13 +346,13 @@ func TestDashboardFilters(t *testing.T) {
 	// A date-only until covers the whole day. Events at base and base+24h are
 	// on 2026-10-10 and 2026-10-11.
 	var byDate eventsBody
-	f.getJSON(t, "/cloud/v1/events?since=2026-10-11&until=2026-10-12", &byDate)
+	f.getJSON(t, "/v1/events?since=2026-10-11&until=2026-10-12", &byDate)
 	if len(byDate.Events) != 2 {
 		t.Fatalf("date filter = %+v, want the 10-11 and 10-12 events", byDate.Events)
 	}
 
 	var deliveries deliveriesBody
-	f.getJSON(t, "/cloud/v1/deliveries?state=dead", &deliveries)
+	f.getJSON(t, "/v1/deliveries?state=dead", &deliveries)
 	if len(deliveries.Deliveries) != 0 {
 		t.Fatalf("delivery state filter = %+v, want none dead", deliveries.Deliveries)
 	}
@@ -361,12 +371,12 @@ func TestDashboardPagination(t *testing.T) {
 	}
 
 	var first eventsBody
-	f.getJSON(t, "/cloud/v1/events?limit=2&offset=0", &first)
+	f.getJSON(t, "/v1/events?limit=2&offset=0", &first)
 	if len(first.Events) != 2 || !first.Page.HasMore {
 		t.Fatalf("first page = %+v", first)
 	}
 	var second eventsBody
-	f.getJSON(t, "/cloud/v1/events?limit=2&offset=2", &second)
+	f.getJSON(t, "/v1/events?limit=2&offset=2", &second)
 	if len(second.Events) != 1 || second.Page.HasMore {
 		t.Fatalf("second page = %+v", second)
 	}
@@ -376,7 +386,7 @@ func TestDashboardPagination(t *testing.T) {
 
 	// limit is clamped, so an oversized page cannot exhaust the database.
 	var clamped eventsBody
-	f.getJSON(t, "/cloud/v1/events?limit=100000", &clamped)
+	f.getJSON(t, "/v1/events?limit=100000", &clamped)
 	if clamped.Page.Limit != 100 {
 		t.Fatalf("limit = %d, want 100", clamped.Page.Limit)
 	}
@@ -394,7 +404,7 @@ func TestDashboardRedactsSecrets(t *testing.T) {
 		"webhook https://user:hunter2@example.com failed api_key=abcd1234")
 
 	var events eventsBody
-	f.getJSON(t, "/cloud/v1/events", &events)
+	f.getJSON(t, "/v1/events", &events)
 	if len(events.Events) != 1 {
 		t.Fatalf("events = %+v", events.Events)
 	}
@@ -403,7 +413,7 @@ func TestDashboardRedactsSecrets(t *testing.T) {
 	}
 
 	var deliveries deliveriesBody
-	f.getJSON(t, "/cloud/v1/deliveries", &deliveries)
+	f.getJSON(t, "/v1/deliveries", &deliveries)
 	if len(deliveries.Deliveries) != 1 {
 		t.Fatalf("deliveries = %+v", deliveries.Deliveries)
 	}
@@ -422,10 +432,10 @@ func TestDashboardRejectsUnknownFilters(t *testing.T) {
 	f := newDashboardFixture(t)
 	f.signIn(t, "alice@example.com")
 	for _, path := range []string{
-		"/cloud/v1/events?status=nope",
-		"/cloud/v1/events?since=not-a-date",
-		"/cloud/v1/events?until=2026-13-40",
-		"/cloud/v1/deliveries?state=nope",
+		"/v1/events?status=nope",
+		"/v1/events?since=not-a-date",
+		"/v1/events?until=2026-13-40",
+		"/v1/deliveries?state=nope",
 	} {
 		if code := f.getJSON(t, path, nil); code != http.StatusUnprocessableEntity {
 			t.Errorf("GET %s = %d, want 422", path, code)

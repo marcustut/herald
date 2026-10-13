@@ -257,13 +257,13 @@ func (f *cloudFixture) do(t *testing.T, method, path, csrf string) *http.Respons
 // signIn runs the magic-link flow and returns the CSRF token.
 func (f *cloudFixture) signIn(t *testing.T, email string) string {
 	t.Helper()
-	resp := f.post(t, "/cloud/v1/auth/magic-link", "application/json", `{"email":"`+email+`"}`)
+	resp := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"`+email+`"}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("magic-link status = %d", resp.StatusCode)
 	}
 	raw := f.mail.lastToken(t)
-	cb, err := f.client.Get(f.server.URL + "/cloud/v1/auth/callback?token=" + url.QueryEscape(raw))
+	cb, err := f.client.Get(f.server.URL + "/v1/auth/callback?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,11 +289,11 @@ func TestCloudRoutesAbsentWhenDisabled(t *testing.T) {
 	defer ts.Close()
 
 	for _, tc := range []struct{ method, path string }{
-		{http.MethodPost, "/cloud/v1/auth/magic-link"},
-		{http.MethodGet, "/cloud/v1/auth/callback"},
-		{http.MethodPost, "/cloud/v1/auth/signout"},
-		{http.MethodGet, "/cloud/v1/me"},
-		{http.MethodDelete, "/cloud/v1/account"},
+		{http.MethodPost, "/v1/auth/magic-link"},
+		{http.MethodGet, "/v1/auth/callback"},
+		{http.MethodPost, "/v1/auth/signout"},
+		{http.MethodGet, "/v1/me"},
+		{http.MethodDelete, "/v1/account"},
 	} {
 		req, _ := http.NewRequest(tc.method, ts.URL+tc.path, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -317,13 +317,13 @@ func TestCloudSignInSessionAndSignOut(t *testing.T) {
 	f := newCloudFixture(t, nil)
 
 	// The callback must set a hardened cookie.
-	resp := f.post(t, "/cloud/v1/auth/magic-link", "application/json", `{"email":"alice@example.com"}`)
+	resp := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"alice@example.com"}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("magic-link status = %d", resp.StatusCode)
 	}
 	raw := f.mail.lastToken(t)
-	cb, err := f.client.Get(f.server.URL + "/cloud/v1/auth/callback?token=" + url.QueryEscape(raw))
+	cb, err := f.client.Get(f.server.URL + "/v1/auth/callback?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestCloudSignInSessionAndSignOut(t *testing.T) {
 	}
 
 	// A replay of the same link is refused.
-	replay, err := f.client.Get(f.server.URL + "/cloud/v1/auth/callback?token=" + url.QueryEscape(raw))
+	replay, err := f.client.Get(f.server.URL + "/v1/auth/callback?token=" + url.QueryEscape(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,29 +370,29 @@ func TestCloudSignInSessionAndSignOut(t *testing.T) {
 	}
 
 	// The session reads /me.
-	me := f.do(t, http.MethodGet, "/cloud/v1/me", "")
+	me := f.do(t, http.MethodGet, "/v1/me", "")
 	if me.StatusCode != http.StatusOK {
 		t.Fatalf("/me status = %d", me.StatusCode)
 	}
 	me.Body.Close()
 
 	// Sign out requires the CSRF token.
-	if resp := f.do(t, http.MethodPost, "/cloud/v1/auth/signout", ""); resp.StatusCode != http.StatusForbidden {
+	if resp := f.do(t, http.MethodPost, "/v1/auth/signout", ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("signout without CSRF = %d, want 403", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.do(t, http.MethodPost, "/cloud/v1/auth/signout", "wrong"); resp.StatusCode != http.StatusForbidden {
+	if resp := f.do(t, http.MethodPost, "/v1/auth/signout", "wrong"); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("signout with wrong CSRF = %d, want 403", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.do(t, http.MethodPost, "/cloud/v1/auth/signout", body.CSRF); resp.StatusCode != http.StatusNoContent {
+	if resp := f.do(t, http.MethodPost, "/v1/auth/signout", body.CSRF); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("signout = %d, want 204", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.do(t, http.MethodGet, "/cloud/v1/me", ""); resp.StatusCode != http.StatusUnauthorized {
+	if resp := f.do(t, http.MethodGet, "/v1/me", ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("/me after signout = %d, want 401", resp.StatusCode)
 	} else {
 		resp.Body.Close()
@@ -403,17 +403,17 @@ func TestCloudDeleteAccount(t *testing.T) {
 	f := newCloudFixture(t, nil)
 	csrf := f.signIn(t, "alice@example.com")
 
-	if resp := f.do(t, http.MethodDelete, "/cloud/v1/account", ""); resp.StatusCode != http.StatusForbidden {
+	if resp := f.do(t, http.MethodDelete, "/v1/account", ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("delete without CSRF = %d, want 403", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.do(t, http.MethodDelete, "/cloud/v1/account", csrf); resp.StatusCode != http.StatusNoContent {
+	if resp := f.do(t, http.MethodDelete, "/v1/account", csrf); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete = %d, want 204", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.do(t, http.MethodGet, "/cloud/v1/me", ""); resp.StatusCode != http.StatusUnauthorized {
+	if resp := f.do(t, http.MethodGet, "/v1/me", ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("/me after delete = %d, want 401", resp.StatusCode)
 	} else {
 		resp.Body.Close()
@@ -422,7 +422,7 @@ func TestCloudDeleteAccount(t *testing.T) {
 
 func TestCloudMeWithoutSession(t *testing.T) {
 	f := newCloudFixture(t, nil)
-	resp := f.do(t, http.MethodGet, "/cloud/v1/me", "")
+	resp := f.do(t, http.MethodGet, "/v1/me", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("/me = %d, want 401", resp.StatusCode)
@@ -431,17 +431,17 @@ func TestCloudMeWithoutSession(t *testing.T) {
 
 func TestCloudMagicLinkValidation(t *testing.T) {
 	f := newCloudFixture(t, nil)
-	if resp := f.post(t, "/cloud/v1/auth/magic-link", "text/plain", `{"email":"a@example.com"}`); resp.StatusCode != http.StatusUnsupportedMediaType {
+	if resp := f.post(t, "/v1/auth/magic-link", "text/plain", `{"email":"a@example.com"}`); resp.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("non-json = %d, want 415", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.post(t, "/cloud/v1/auth/magic-link", "application/json", `{"email":"nope"}`); resp.StatusCode != http.StatusUnprocessableEntity {
+	if resp := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"nope"}`); resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid email = %d, want 422", resp.StatusCode)
 	} else {
 		resp.Body.Close()
 	}
-	if resp := f.post(t, "/cloud/v1/auth/magic-link", "application/json", `{`); resp.StatusCode != http.StatusBadRequest {
+	if resp := f.post(t, "/v1/auth/magic-link", "application/json", `{`); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("malformed json = %d, want 400", resp.StatusCode)
 	} else {
 		resp.Body.Close()
@@ -452,13 +452,13 @@ func TestCloudMagicLinkRateLimited(t *testing.T) {
 	limiter := memory.NewLoginLimiter(2, time.Minute, cloudClock{t: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)})
 	f := newCloudFixture(t, limiter)
 	for i := 0; i < 2; i++ {
-		resp := f.post(t, "/cloud/v1/auth/magic-link", "application/json", `{"email":"a@example.com"}`)
+		resp := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"a@example.com"}`)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusAccepted {
 			t.Fatalf("request %d = %d", i, resp.StatusCode)
 		}
 	}
-	third := f.post(t, "/cloud/v1/auth/magic-link", "application/json", `{"email":"a@example.com"}`)
+	third := f.post(t, "/v1/auth/magic-link", "application/json", `{"email":"a@example.com"}`)
 	defer third.Body.Close()
 	if third.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("third = %d, want 429", third.StatusCode)

@@ -36,7 +36,7 @@ func (h *cloudHarness) postJSON(t *testing.T, c *http.Client, method, path, csrf
 // test if it does not answer 201.
 func (h *cloudHarness) createProject(t *testing.T, c *http.Client, csrf, id, name string) {
 	t.Helper()
-	resp := h.postJSON(t, c, http.MethodPost, "/cloud/v1/projects", csrf, `{"id":"`+id+`","name":"`+name+`"}`)
+	resp := h.postJSON(t, c, http.MethodPost, "/v1/projects", csrf, `{"id":"`+id+`","name":"`+name+`"}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create project %s = %d", id, resp.StatusCode)
@@ -46,7 +46,7 @@ func (h *cloudHarness) createProject(t *testing.T, c *http.Client, csrf, id, nam
 // issueToken creates a project token and returns the raw secret.
 func (h *cloudHarness) issueToken(t *testing.T, c *http.Client, csrf, project string) string {
 	t.Helper()
-	resp := h.postJSON(t, c, http.MethodPost, "/cloud/v1/projects/"+project+"/token", csrf, "")
+	resp := h.postJSON(t, c, http.MethodPost, "/v1/projects/"+project+"/token", csrf, "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("issue token for %s = %d", project, resp.StatusCode)
@@ -89,7 +89,7 @@ func TestIntegrationTokenRotationAndRevocationAffectLiveSender(t *testing.T) {
 	}
 
 	// Rotate: a new secret is minted and the old one is immediately refused.
-	rot := h.postJSON(t, c, http.MethodPost, "/cloud/v1/projects/alpha/token/rotate", alice.CSRF, "")
+	rot := h.postJSON(t, c, http.MethodPost, "/v1/projects/alpha/token/rotate", alice.CSRF, "")
 	defer rot.Body.Close()
 	if rot.StatusCode != http.StatusCreated {
 		t.Fatalf("rotate = %d", rot.StatusCode)
@@ -112,7 +112,7 @@ func TestIntegrationTokenRotationAndRevocationAffectLiveSender(t *testing.T) {
 
 	// Revoke the replacement by its (one-way) hash; the sender stops working.
 	hashHex := hash.SHA256{}.Hash(rotated.Token)
-	del := h.postJSON(t, c, http.MethodDelete, "/cloud/v1/tokens/"+hashHex, alice.CSRF, "")
+	del := h.postJSON(t, c, http.MethodDelete, "/v1/tokens/"+hashHex, alice.CSRF, "")
 	del.Body.Close()
 	if del.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke = %d, want 204", del.StatusCode)
@@ -137,7 +137,7 @@ func TestIntegrationProjectTenantIsolation(t *testing.T) {
 	}
 
 	// Bob's listing is empty: alice's project is not visible.
-	list := h.get(t, bobClient, "/cloud/v1/projects")
+	list := h.get(t, bobClient, "/v1/projects")
 	defer list.Body.Close()
 	if list.StatusCode != http.StatusOK {
 		t.Fatalf("bob list = %d", list.StatusCode)
@@ -154,9 +154,9 @@ func TestIntegrationProjectTenantIsolation(t *testing.T) {
 
 	// Every cross-tenant action is not-found, never another tenant's row.
 	for _, tc := range []struct{ method, path, payload string }{
-		{http.MethodDelete, "/cloud/v1/projects/alpha", ""},
-		{http.MethodPost, "/cloud/v1/projects/alpha/token", ""},
-		{http.MethodPost, "/cloud/v1/tokens", `{"projects":["alpha"]}`},
+		{http.MethodDelete, "/v1/projects/alpha", ""},
+		{http.MethodPost, "/v1/projects/alpha/token", ""},
+		{http.MethodPost, "/v1/tokens", `{"projects":["alpha"]}`},
 	} {
 		resp := h.postJSON(t, bobClient, tc.method, tc.path, bob.CSRF, tc.payload)
 		resp.Body.Close()
@@ -166,7 +166,7 @@ func TestIntegrationProjectTenantIsolation(t *testing.T) {
 	}
 
 	// Alice's project survives untouched and is still listed for her.
-	aliceList := h.get(t, aliceClient, "/cloud/v1/projects")
+	aliceList := h.get(t, aliceClient, "/v1/projects")
 	defer aliceList.Body.Close()
 	var owned struct {
 		Projects []json.RawMessage `json:"projects"`
@@ -188,7 +188,7 @@ func TestIntegrationTokenListHidesSecret(t *testing.T) {
 	h.createProject(t, c, alice.CSRF, "alpha", "Alpha")
 	raw := h.issueToken(t, c, alice.CSRF, "alpha")
 
-	resp := h.get(t, c, "/cloud/v1/tokens")
+	resp := h.get(t, c, "/v1/tokens")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list tokens = %d", resp.StatusCode)

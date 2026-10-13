@@ -98,7 +98,7 @@ func (f *cloudFixture) postJSON(t *testing.T, method, path, csrf, body string) *
 
 func (f *cloudFixture) tenant(t *testing.T) string {
 	t.Helper()
-	resp := f.do(t, http.MethodGet, "/cloud/v1/me", "")
+	resp := f.do(t, http.MethodGet, "/v1/me", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("/me = %d", resp.StatusCode)
@@ -119,10 +119,10 @@ func TestCloudProjectRoutesAbsentWhenDisabled(t *testing.T) {
 	ts := httptest.NewServer(api.Handler())
 	defer ts.Close()
 	for _, tc := range []struct{ method, path string }{
-		{http.MethodGet, "/cloud/projects"},
-		{http.MethodGet, "/cloud/v1/projects"},
-		{http.MethodPost, "/cloud/v1/projects"},
-		{http.MethodGet, "/cloud/v1/tokens"},
+		{http.MethodGet, "/dashboard"},
+		{http.MethodGet, "/v1/projects"},
+		{http.MethodPost, "/v1/projects"},
+		{http.MethodGet, "/v1/tokens"},
 	} {
 		req, _ := http.NewRequest(tc.method, ts.URL+tc.path, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -140,7 +140,7 @@ func TestCloudProjectsRequireSessionAndCSRF(t *testing.T) {
 	f := newCloudFixture(t, nil)
 
 	// No session cookie: unauthenticated.
-	resp := f.do(t, http.MethodGet, "/cloud/v1/projects", "")
+	resp := f.do(t, http.MethodGet, "/v1/projects", "")
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("list without session = %d, want 401", resp.StatusCode)
@@ -149,18 +149,18 @@ func TestCloudProjectsRequireSessionAndCSRF(t *testing.T) {
 	csrf := f.signIn(t, "alice@example.com")
 
 	// A mutation without the CSRF token is refused.
-	resp = f.postJSON(t, http.MethodPost, "/cloud/v1/projects", "", `{"id":"alpha","name":"Alpha"}`)
+	resp = f.postJSON(t, http.MethodPost, "/v1/projects", "", `{"id":"alpha","name":"Alpha"}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("create without CSRF = %d, want 403", resp.StatusCode)
 	}
-	resp = f.postJSON(t, http.MethodPost, "/cloud/v1/projects", "wrong", `{"id":"alpha","name":"Alpha"}`)
+	resp = f.postJSON(t, http.MethodPost, "/v1/projects", "wrong", `{"id":"alpha","name":"Alpha"}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("create with wrong CSRF = %d, want 403", resp.StatusCode)
 	}
 	// With the right token it succeeds, proving the session is usable.
-	resp = f.postJSON(t, http.MethodPost, "/cloud/v1/projects", csrf, `{"id":"alpha","name":"Alpha"}`)
+	resp = f.postJSON(t, http.MethodPost, "/v1/projects", csrf, `{"id":"alpha","name":"Alpha"}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create with CSRF = %d, want 201", resp.StatusCode)
@@ -174,7 +174,7 @@ func TestCloudProjectsLifecycle(t *testing.T) {
 
 	// Create: ownership comes from the session, never the body. A body that
 	// names another tenant must not move the project.
-	resp := f.postJSON(t, http.MethodPost, "/cloud/v1/projects", csrf,
+	resp := f.postJSON(t, http.MethodPost, "/v1/projects", csrf,
 		`{"id":"alpha","name":"Alpha","tenantId":"ten_evil"}`)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create = %d, want 201", resp.StatusCode)
@@ -188,14 +188,14 @@ func TestCloudProjectsLifecycle(t *testing.T) {
 	}
 
 	// Validation failure.
-	resp = f.postJSON(t, http.MethodPost, "/cloud/v1/projects", csrf, `{"id":"Bad Slug","name":"x"}`)
+	resp = f.postJSON(t, http.MethodPost, "/v1/projects", csrf, `{"id":"Bad Slug","name":"x"}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid slug = %d, want 422", resp.StatusCode)
 	}
 
 	// List.
-	listResp := f.do(t, http.MethodGet, "/cloud/v1/projects", "")
+	listResp := f.do(t, http.MethodGet, "/v1/projects", "")
 	defer listResp.Body.Close()
 	var list struct {
 		Projects []struct {
@@ -211,7 +211,7 @@ func TestCloudProjectsLifecycle(t *testing.T) {
 	}
 
 	// A project token is shown once.
-	tokenResp := f.postJSON(t, http.MethodPost, "/cloud/v1/projects/alpha/token", csrf, "")
+	tokenResp := f.postJSON(t, http.MethodPost, "/v1/projects/alpha/token", csrf, "")
 	var tokenOut struct {
 		Token    string   `json:"token"`
 		Kind     string   `json:"kind"`
@@ -244,7 +244,7 @@ func TestCloudProjectsLifecycle(t *testing.T) {
 	}
 
 	// Rotate: the old secret stops working and only the new one does.
-	rotResp := f.postJSON(t, http.MethodPost, "/cloud/v1/projects/alpha/token/rotate", csrf, "")
+	rotResp := f.postJSON(t, http.MethodPost, "/v1/projects/alpha/token/rotate", csrf, "")
 	var rotated struct {
 		Token string `json:"token"`
 	}
@@ -264,7 +264,7 @@ func TestCloudProjectsLifecycle(t *testing.T) {
 
 	// Revoke: the replacement stops working too.
 	hash := shaHasher{}.Hash(rotated.Token)
-	delResp := f.do(t, http.MethodDelete, "/cloud/v1/tokens/"+hash, csrf)
+	delResp := f.do(t, http.MethodDelete, "/v1/tokens/"+hash, csrf)
 	delResp.Body.Close()
 	if delResp.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke = %d, want 204", delResp.StatusCode)
@@ -274,12 +274,12 @@ func TestCloudProjectsLifecycle(t *testing.T) {
 	}
 
 	// Delete the project (needs CSRF).
-	if r := f.do(t, http.MethodDelete, "/cloud/v1/projects/alpha", ""); r.StatusCode != http.StatusForbidden {
+	if r := f.do(t, http.MethodDelete, "/v1/projects/alpha", ""); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("delete without CSRF = %d, want 403", r.StatusCode)
 	} else {
 		r.Body.Close()
 	}
-	if r := f.do(t, http.MethodDelete, "/cloud/v1/projects/alpha", csrf); r.StatusCode != http.StatusNoContent {
+	if r := f.do(t, http.MethodDelete, "/v1/projects/alpha", csrf); r.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete = %d, want 204", r.StatusCode)
 	} else {
 		r.Body.Close()
@@ -307,7 +307,7 @@ func TestCloudScopedTokenCannotEscalate(t *testing.T) {
 	f := newCloudFixture(t, nil)
 	csrf := f.signIn(t, "alice@example.com")
 
-	if r := f.postJSON(t, http.MethodPost, "/cloud/v1/projects", csrf, `{"id":"alpha","name":"Alpha"}`); r.StatusCode != http.StatusCreated {
+	if r := f.postJSON(t, http.MethodPost, "/v1/projects", csrf, `{"id":"alpha","name":"Alpha"}`); r.StatusCode != http.StatusCreated {
 		t.Fatalf("create alpha = %d", r.StatusCode)
 	} else {
 		r.Body.Close()
@@ -315,7 +315,7 @@ func TestCloudScopedTokenCannotEscalate(t *testing.T) {
 
 	// A scoped token naming a project the tenant does not own is refused, and
 	// no credential is minted.
-	resp := f.postJSON(t, http.MethodPost, "/cloud/v1/tokens", csrf, `{"projects":["alpha","foreign"]}`)
+	resp := f.postJSON(t, http.MethodPost, "/v1/tokens", csrf, `{"projects":["alpha","foreign"]}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("escalating scoped token = %d, want 404", resp.StatusCode)
@@ -326,7 +326,7 @@ func TestCloudScopedTokenCannotEscalate(t *testing.T) {
 
 	// The same request without the foreign project succeeds and the token is
 	// scoped to exactly the named project.
-	ok := f.postJSON(t, http.MethodPost, "/cloud/v1/tokens", csrf, `{"projects":["alpha"]}`)
+	ok := f.postJSON(t, http.MethodPost, "/v1/tokens", csrf, `{"projects":["alpha"]}`)
 	var out struct {
 		Token    string   `json:"token"`
 		Kind     string   `json:"kind"`
@@ -351,14 +351,14 @@ func TestCloudScopedTokenCannotEscalate(t *testing.T) {
 func TestCloudProjectsPageRequiresSession(t *testing.T) {
 	f := newCloudFixture(t, nil)
 
-	resp := f.do(t, http.MethodGet, "/cloud/projects", "")
+	resp := f.do(t, http.MethodGet, "/dashboard", "")
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("page without session = %d, want 401", resp.StatusCode)
 	}
 
 	f.signIn(t, "alice@example.com")
-	resp = f.do(t, http.MethodGet, "/cloud/projects", "")
+	resp = f.do(t, http.MethodGet, "/dashboard", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("page = %d, want 200", resp.StatusCode)
@@ -378,7 +378,7 @@ func TestCloudProjectsPageRequiresSession(t *testing.T) {
 // listTokens returns the raw JSON body of the token listing.
 func (f *cloudFixture) listTokens(t *testing.T) string {
 	t.Helper()
-	resp := f.do(t, http.MethodGet, "/cloud/v1/tokens", "")
+	resp := f.do(t, http.MethodGet, "/v1/tokens", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list tokens = %d", resp.StatusCode)

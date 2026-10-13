@@ -135,7 +135,7 @@ endpoint for them.
    refuses to start when `bounce_webhook` is on and the secret is empty.
 
 3. **Point the provider at**
-   `https://cloud.example.com/cloud/v1/email/events`. It must be reachable from
+   `https://cloud.example.com/v1/email/events`. It must be reachable from
    the provider, so it lives on the public origin — not on a loopback interface.
    The path 404s when `bounce_webhook` is off or the secret is unset, exactly
    like any other absent cloud route.
@@ -220,14 +220,14 @@ This is a deliberate, audited break-glass: a wrong removal re-burns reputation.
 
 ```sh
 # Route present only when configured (expect 401 without the secret, not 404).
-curl -si -X POST https://cloud.example.com/cloud/v1/email/events
+curl -si -X POST https://cloud.example.com/v1/email/events
 # Authenticated transient bounce: accepted, no suppression.
-curl -si -X POST https://cloud.example.com/cloud/v1/email/events \
+curl -si -X POST https://cloud.example.com/v1/email/events \
   -H "Authorization: Bearer $HERALD_BOUNCE_WEBHOOK_SECRET" \
   -H 'Content-Type: application/json' \
   -d '{"id":"test-1","type":"bounce","recipient":"test@example.com","permanent":false}'
 # Permanent bounce or complaint: accepted, address suppressed.
-curl -si -X POST https://cloud.example.com/cloud/v1/email/events \
+curl -si -X POST https://cloud.example.com/v1/email/events \
   -H "Authorization: Bearer $HERALD_BOUNCE_WEBHOOK_SECRET" \
   -H 'Content-Type: application/json' \
   -d '{"id":"test-2","type":"complaint","recipient":"test@example.com"}'

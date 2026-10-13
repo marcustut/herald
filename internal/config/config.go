@@ -30,10 +30,12 @@ type Gateway struct {
 // Cloud gates the hosted account surface. When Enabled is false (the default,
 // and always for a self-hosted deployment) no accounts, signup or sign-in
 // routes are registered and the server behaves as if the feature were absent.
-// BaseURL is the absolute origin the magic-link callback points at.
+// BaseURL is the public base under which the API is served; the magic-link
+// callback path is appended to it. It is an absolute URL and may include a
+// path prefix such as /api.
 //
 // BounceWebhook enables the provider bounce/complaint ingestion endpoint
-// (POST /cloud/v1/email/events). It is shared-secret authenticated with
+// (POST /v1/email/events). It is shared-secret authenticated with
 // HERALD_BOUNCE_WEBHOOK_SECRET, which is read from the environment so no secret
 // lives in the config file. See docs/deliverability.md.
 type Cloud struct {
