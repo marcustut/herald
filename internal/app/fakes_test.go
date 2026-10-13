@@ -120,6 +120,11 @@ func (g *fakeIDs) NewTenantID() domain.TenantID {
 	return domain.TenantID(fmt.Sprintf("ten_%d", g.n))
 }
 
+func (g *fakeIDs) NewDestinationID() domain.DestinationID {
+	g.n++
+	return domain.DestinationID(fmt.Sprintf("dst_%d", g.n))
+}
+
 type eventKey struct {
 	tenant  domain.TenantID
 	project domain.ProjectID

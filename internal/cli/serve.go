@@ -55,7 +55,9 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		defer st.close()
 	}
 
-	sinks, err := sink.Build(cfg, os.Getenv("HERALD_SMTP_USERNAME"), os.Getenv("HERALD_SMTP_PASSWORD"))
+	smtpUser := os.Getenv("HERALD_SMTP_USERNAME")
+	smtpPass := os.Getenv("HERALD_SMTP_PASSWORD")
+	sinks, err := sink.Build(cfg, smtpUser, smtpPass)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
@@ -88,6 +90,13 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 			fmt.Fprintln(stderr, "error: cloud.enabled requires a database (set --database-url or HERALD_DATABASE_URL)")
 			return 1
 		}
+		// Hosted deployments resolve a project's destinations from the database
+		// instead of gateway.toml; self-host keeps the config-driven directory.
+		if st.sinkDirectory == nil {
+			fmt.Fprintln(stderr, "error: cloud.enabled requires the ownership store (set --database-url or HERALD_DATABASE_URL)")
+			return 1
+		}
+		api.Submit.Sinks = st.sinkDirectory
 		api.Cloud = cloudAPI(cfg, st, logger)
 		logger.Info("cloud auth enabled", "base_url", cfg.Cloud.BaseURL)
 	}
@@ -99,7 +108,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		dispatcher := app.Dispatcher{
 			Deliveries:  st.deliveries,
 			Events:      st.events,
-			Sinks:       sinks,
+			Sinks:       dispatchSinks(cfg, st, sinks, smtpUser, smtpPass),
 			Clock:       systemClock{},
 			Lease:       time.Minute,
 			MaxAttempts: 8,
@@ -160,6 +169,17 @@ func cloudAPI(cfg config.Gateway, st stores, logger *slog.Logger) *httpapi.Cloud
 			Credentials: st.credentials,
 			Issuer:      app.Issuer{Store: st.credentials, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: systemClock{}},
 			Clock:       systemClock{},
+		},
+		Destinations: &app.Destinations{
+			Projects: st.projects,
+			Store:    st.destinations,
+			Tokens:   st.destVerifications,
+			Mailer:   mailer,
+			Secrets:  secret.Generator{},
+			Hasher:   hash.SHA256{},
+			IDs:      id.Random{},
+			Clock:    systemClock{},
+			LinkBase: cfg.Cloud.BaseURL,
 		},
 		Limiter:      memory.NewLoginLimiter(httpapi.DefaultAuthRequests, httpapi.DefaultAuthWindow, systemClock{}),
 		CookieSecure: strings.HasPrefix(cfg.Cloud.BaseURL, "https://"),

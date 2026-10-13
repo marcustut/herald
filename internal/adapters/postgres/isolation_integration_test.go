@@ -38,7 +38,7 @@ func mustProject(t *testing.T, id domain.ProjectID, tenant domain.TenantID, at t
 func mustDestination(t *testing.T, id domain.DestinationID, tenant domain.TenantID, project domain.ProjectID, kind domain.DestinationKind, target string, enabled bool, at time.Time) domain.Destination {
 	t.Helper()
 	d, err := domain.NewDestination(domain.Destination{
-		ID: id, TenantID: tenant, ProjectID: project, Kind: kind, Target: target, Enabled: enabled, CreatedAt: at,
+		ID: id, TenantID: tenant, ProjectID: project, Kind: kind, Target: target, Enabled: enabled, VerifiedAt: at, CreatedAt: at,
 	})
 	if err != nil {
 		t.Fatalf("new destination: %v", err)

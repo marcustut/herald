@@ -1,0 +1,146 @@
+package sink
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/marcustut/herald/internal/app"
+	"github.com/marcustut/herald/internal/config"
+	"github.com/marcustut/herald/internal/domain"
+)
+
+// stubDestinations is a minimal app.DestinationStore whose reads are driven by
+// a fixed map, so the source can be exercised without a database.
+type stubDestinations struct {
+	byID map[domain.DestinationID]domain.Destination
+	err  error
+}
+
+func (s *stubDestinations) PutDestination(context.Context, domain.Destination) error { return nil }
+
+func (s *stubDestinations) Destination(_ context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.DestinationID) (domain.Destination, bool, error) {
+	if s.err != nil {
+		return domain.Destination{}, false, s.err
+	}
+	d, ok := s.byID[id]
+	if !ok || !d.OwnedBy(tenant, project) {
+		return domain.Destination{}, false, nil
+	}
+	return d, true, nil
+}
+
+func (s *stubDestinations) DestinationsByProject(context.Context, domain.TenantID, domain.ProjectID) ([]domain.Destination, error) {
+	return nil, nil
+}
+
+func (s *stubDestinations) DeleteDestination(context.Context, domain.TenantID, domain.ProjectID, domain.DestinationID) error {
+	return app.ErrDestinationNotFound
+}
+
+func (s *stubDestinations) MarkVerified(context.Context, domain.TenantID, domain.ProjectID, domain.DestinationID, time.Time) error {
+	return nil
+}
+
+func destination(id domain.DestinationID, kind domain.DestinationKind, target string, enabled bool, verifiedAt time.Time) domain.Destination {
+	return domain.Destination{
+		ID: id, TenantID: "ten_a", ProjectID: "alpha", Kind: kind, Target: target,
+		Enabled: enabled, VerifiedAt: verifiedAt, CreatedAt: verifiedAt,
+	}
+}
+
+func TestDestinationSourceBuildsEmailForVerifiedTarget(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_e": destination("dst_e", domain.DestinationEmail, "ops@example.com", true, now),
+	}}
+	cfg := config.Gateway{SMTP: config.SMTP{Addr: "127.0.0.1:587", From: "herald@x", FromName: "Herald"}}
+	ft := &fakeTransport{}
+	src := NewDestinationSource(store, cfg, "", "").WithMailTransport(ft)
+
+	s, ok, err := src.Sink(context.Background(), "ten_a", "alpha", "dst_e")
+	if err != nil || !ok {
+		t.Fatalf("Sink ok=%v err=%v", ok, err)
+	}
+	if err := s.Deliver(context.Background(), sampleEvent()); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if len(ft.to) != 1 || ft.to[0] != "ops@example.com" {
+		t.Fatalf("recipients = %v, want [ops@example.com]", ft.to)
+	}
+}
+
+func TestDestinationSourceOnlyDeliversEnabledVerifiedOwned(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_ok":         destination("dst_ok", domain.DestinationEmail, "ok@example.com", true, now),
+		"dst_off":        destination("dst_off", domain.DestinationEmail, "off@example.com", false, now),
+		"dst_unverified": destination("dst_unverified", domain.DestinationEmail, "u@example.com", true, time.Time{}),
+	}}
+	src := NewDestinationSource(store, config.Gateway{}, "", "")
+
+	for _, tc := range []struct {
+		name  string
+		id    domain.DestinationID
+		found bool
+	}{
+		{"enabled and verified", "dst_ok", true},
+		{"disabled", "dst_off", false},
+		{"unverified", "dst_unverified", false},
+		{"missing", "dst_missing", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok, err := src.Sink(context.Background(), "ten_a", "alpha", domain.SinkID(tc.id))
+			if err != nil || ok != tc.found {
+				t.Fatalf("ok = %v (want %v) err = %v", ok, tc.found, err)
+			}
+		})
+	}
+
+	// A destination owned by another tenant is not resolved.
+	if _, ok, _ := src.Sink(context.Background(), "ten_b", "alpha", "dst_ok"); ok {
+		t.Fatal("resolved a destination under the wrong tenant")
+	}
+}
+
+func TestDestinationSourceBuildsWebhook(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	var calls int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	store := &stubDestinations{byID: map[domain.DestinationID]domain.Destination{
+		"dst_w": destination("dst_w", domain.DestinationWebhook, ts.URL, true, now),
+	}}
+	// The test server is on loopback; opt in exactly as an operator would for a
+	// trusted internal receiver. The hardened client is still used.
+	cfg := config.Gateway{Security: config.Security{AllowPrivateNetworks: true}}
+	src := NewDestinationSource(store, cfg, "", "")
+
+	s, ok, err := src.Sink(context.Background(), "ten_a", "alpha", "dst_w")
+	if err != nil || !ok {
+		t.Fatalf("Sink ok=%v err=%v", ok, err)
+	}
+	if err := s.Deliver(context.Background(), sampleEvent()); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("webhook calls = %d, want 1", calls)
+	}
+}
+
+func TestDestinationSourceStoreErrorSurfaces(t *testing.T) {
+	boom := errors.New("boom")
+	src := NewDestinationSource(&stubDestinations{err: boom}, config.Gateway{}, "", "")
+	if _, _, err := src.Sink(context.Background(), "ten_a", "alpha", "dst"); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want boom", err)
+	}
+}
+
+var _ app.DestinationStore = (*stubDestinations)(nil)

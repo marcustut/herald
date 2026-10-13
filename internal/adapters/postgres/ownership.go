@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -98,15 +99,16 @@ func (s *Ownership) PutDestination(ctx context.Context, d domain.Destination) er
 	// skipped and zero rows are affected, so a known foreign id is never
 	// re-pointed or overwritten.
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO destinations (id, tenant_id, project_id, kind, target, enabled, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO destinations (id, tenant_id, project_id, kind, target, enabled, verified_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (id) DO UPDATE SET
 			kind = EXCLUDED.kind,
 			target = EXCLUDED.target,
-			enabled = EXCLUDED.enabled
+			enabled = EXCLUDED.enabled,
+			verified_at = EXCLUDED.verified_at
 		WHERE destinations.tenant_id = EXCLUDED.tenant_id
 		  AND destinations.project_id = EXCLUDED.project_id`,
-		string(d.ID), string(d.TenantID), string(d.ProjectID), string(d.Kind), d.Target, d.Enabled, d.CreatedAt)
+		string(d.ID), string(d.TenantID), string(d.ProjectID), string(d.Kind), d.Target, d.Enabled, nullTime(d.VerifiedAt), d.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("put destination: %w", err)
 	}
@@ -164,8 +166,26 @@ func (s *Ownership) DeleteDestination(ctx context.Context, tenant domain.TenantI
 	return nil
 }
 
+// MarkVerified records that ownership of the destination's target was proven.
+// The owner comes from the caller (a stored verification token), so a token can
+// only ever verify the destination it was minted for.
+func (s *Ownership) MarkVerified(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.DestinationID, now time.Time) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE destinations SET verified_at = $4
+		WHERE id = $1 AND tenant_id = $2 AND project_id = $3`,
+		string(id), string(tenant), string(project), now)
+	if err != nil {
+		return fmt.Errorf("mark destination verified: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return app.ErrDestinationNotFound
+	}
+	return nil
+}
+
 // EnabledSinks resolves the enabled destinations a project's events fan out to,
 // by tenant and project. It satisfies app.SinkDirectory for a hosted deployment.
+// An unverified destination is never delivered to, so it is omitted here.
 func (s *Ownership) EnabledSinks(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.SinkID, error) {
 	destinations, err := s.DestinationsByProject(ctx, tenant, project)
 	if err != nil {
@@ -173,30 +193,32 @@ func (s *Ownership) EnabledSinks(ctx context.Context, tenant domain.TenantID, pr
 	}
 	var ids []domain.SinkID
 	for _, d := range destinations {
-		if d.Enabled {
+		if d.Enabled && d.Verified() {
 			ids = append(ids, domain.SinkID(d.ID))
 		}
 	}
 	return ids, nil
 }
 
-const selectDestination = `SELECT id, tenant_id, project_id, kind, target, enabled, created_at FROM destinations`
+const selectDestination = `SELECT id, tenant_id, project_id, kind, target, enabled, verified_at, created_at FROM destinations`
 
 func scanDestination(row pgx.Row) (domain.Destination, error) {
 	var (
-		d         domain.Destination
-		id        string
-		tenantID  string
-		projectID string
-		kind      string
+		d          domain.Destination
+		id         string
+		tenantID   string
+		projectID  string
+		kind       string
+		verifiedAt *time.Time
 	)
-	if err := row.Scan(&id, &tenantID, &projectID, &kind, &d.Target, &d.Enabled, &d.CreatedAt); err != nil {
+	if err := row.Scan(&id, &tenantID, &projectID, &kind, &d.Target, &d.Enabled, &verifiedAt, &d.CreatedAt); err != nil {
 		return domain.Destination{}, err
 	}
 	d.ID = domain.DestinationID(id)
 	d.TenantID = domain.TenantID(tenantID)
 	d.ProjectID = domain.ProjectID(projectID)
 	d.Kind = domain.DestinationKind(kind)
+	d.VerifiedAt = timeOrZero(verifiedAt)
 	return d, nil
 }
 

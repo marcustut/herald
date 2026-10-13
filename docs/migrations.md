@@ -52,6 +52,15 @@ cascading with their user/account/tenant) and a global unique index on
 additive; the ownership tables were staged empty by version 2, so the unique
 index cannot collide with existing rows.
 
+### Destination verification (version 4)
+
+`destination_verification` adds a nullable `destinations.verified_at` and the
+`destination_verifications` table: single-use, hashed verification tokens with
+an expiry that carry the owning `(tenant, project)` and destination id, and
+cascade away with their destination. A destination is delivered to only once it
+is verified. It is purely additive: no existing row is read or rewritten, so an
+existing database upgrades with no data loss.
+
 ### Checksum verification
 
 If the SQL of an already-applied step no longer hashes to the recorded

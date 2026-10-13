@@ -24,11 +24,13 @@ type migration struct {
 // reports database, and an already-migrated Event database all converge on the
 // same shape. Version 2 adds the durable ownership model. Version 3 adds the
 // hosted sign-in state: single-use magic-link tokens, browser sessions, and a
-// global uniqueness rule on user email.
+// global uniqueness rule on user email. Version 4 adds destination
+// verification.
 var migrations = []migration{
 	{version: 1, name: "baseline", sql: baselineSchema},
 	{version: 2, name: "ownership", sql: ownershipSchema},
 	{version: 3, name: "auth", sql: authSchema},
+	{version: 4, name: "destination_verification", sql: destinationVerificationSchema},
 }
 
 // ownershipSchema is migration version 2. It adds the account/user/tenant/
@@ -112,6 +114,30 @@ CREATE TABLE IF NOT EXISTS sessions (
 	revoked_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
+`
+
+// destinationVerificationSchema is migration version 4. It records destination
+// verification. `verified_at` is nullable, so every existing and freshly
+// created destination starts unverified and is delivered to only once its
+// ownership is proven. The token table stores only the hash of a single-use
+// verification token, carries the owning (tenant, project) so confirmation
+// proves ownership from the stored row rather than the request, and cascades
+// away with its destination. It is purely additive: no existing row is read or
+// rewritten.
+const destinationVerificationSchema = `
+ALTER TABLE destinations ADD COLUMN IF NOT EXISTS verified_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS destination_verifications (
+	token_hash     text PRIMARY KEY,
+	destination_id text NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+	tenant_id      text NOT NULL,
+	project_id     text NOT NULL,
+	email          text NOT NULL,
+	created_at     timestamptz NOT NULL,
+	expires_at     timestamptz NOT NULL,
+	used_at        timestamptz
+);
+CREATE INDEX IF NOT EXISTS destination_verifications_destination ON destination_verifications (destination_id);
 `
 
 const schemaMigrationsDDL = `

@@ -52,7 +52,7 @@ func testPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 // resetSchema drops every Herald table so each test starts from a clean slate.
 func resetSchema(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
-	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS sessions, login_tokens, destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
+	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS destination_verifications, sessions, login_tokens, destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
 		t.Fatalf("reset schema: %v", err)
 	}
 }
@@ -73,7 +73,7 @@ func TestMigrateFresh(t *testing.T) {
 		t.Fatalf("migrate fresh: %v", err)
 	}
 
-	for _, table := range []string{"credentials", "events", "deliveries", "accounts", "tenants", "users", "projects", "destinations", "login_tokens", "sessions", "schema_migrations"} {
+	for _, table := range []string{"credentials", "events", "deliveries", "accounts", "tenants", "users", "projects", "destinations", "destination_verifications", "login_tokens", "sessions", "schema_migrations"} {
 		var ok bool
 		if err := pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&ok); err != nil || !ok {
 			t.Fatalf("table %s exists=%v err=%v", table, ok, err)
@@ -105,6 +105,22 @@ func TestMigrateFresh(t *testing.T) {
 	}
 	if name != "auth" || sum != checksum(authSchema) {
 		t.Fatalf("auth migration row name=%q sum=%q", name, sum)
+	}
+	if err := pool.QueryRow(ctx, `SELECT name, checksum FROM schema_migrations WHERE version = 4`).
+		Scan(&name, &sum); err != nil {
+		t.Fatalf("read destination verification migration row: %v", err)
+	}
+	if name != "destination_verification" || sum != checksum(destinationVerificationSchema) {
+		t.Fatalf("destination verification migration row name=%q sum=%q", name, sum)
+	}
+
+	var hasVerifiedAt bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		WHERE table_name = 'destinations' AND column_name = 'verified_at')`).Scan(&hasVerifiedAt); err != nil {
+		t.Fatal(err)
+	}
+	if !hasVerifiedAt {
+		t.Fatal("fresh schema is missing destinations.verified_at")
 	}
 
 	var hasReportID bool
@@ -149,7 +165,7 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version = 2`).Scan(&secondV2); err != nil {
 		t.Fatal(err)
 	}
-	if count != 3 || !secondV1.Equal(firstV1) || !secondV2.Equal(firstV2) {
+	if count != 4 || !secondV1.Equal(firstV1) || !secondV2.Equal(firstV2) {
 		t.Fatalf("second run changed history: count=%d v1 %v->%v v2 %v->%v", count, firstV1, secondV1, firstV2, secondV2)
 	}
 }
@@ -228,10 +244,10 @@ func TestMigrateFromEventSchema(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM credentials WHERE token_hash='h1'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("credential lost: count=%d err=%v", count, err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 3 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 4 {
 		t.Fatalf("migration rows=%d err=%v", count, err)
 	}
-	for _, table := range []string{"accounts", "tenants", "users", "projects", "destinations", "login_tokens", "sessions"} {
+	for _, table := range []string{"accounts", "tenants", "users", "projects", "destinations", "destination_verifications", "login_tokens", "sessions"} {
 		var ok bool
 		if err := pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&ok); err != nil || !ok {
 			t.Fatalf("ownership table %s exists=%v err=%v", table, ok, err)
@@ -276,8 +292,8 @@ func TestMigrateConcurrent(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
-	if rows != 3 {
-		t.Fatalf("migration rows = %d, want 3", rows)
+	if rows != 4 {
+		t.Fatalf("migration rows = %d, want 4", rows)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE id='rep_1'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("data lost after concurrent rename: count=%d err=%v", count, err)
