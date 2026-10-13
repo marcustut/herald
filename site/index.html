@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herald — your coding agents email you when they finish</title>
+<meta name="description" content="Herald is a small self-hosted gateway that lets coding agents across all your projects email you when work finishes. Self-host now; Cloud is coming.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <a class="brand" href="#top" aria-label="Herald home">
+    <span class="brand-mark" aria-hidden="true">◆</span> herald
+  </a>
+  <nav aria-label="Primary">
+    <a href="#self-host">Self-host</a>
+    <a href="#waitlist">Cloud</a>
+    <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
+    <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
+    <a href="https://github.com/marcustut/herald">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+
+  <section class="hero" id="top">
+    <p class="eyebrow">Open source · self-hosted</p>
+    <h1>Your coding agents email you when they finish.</h1>
+    <p class="lead">
+      Herald is one small Go binary. Agents <code>POST</code> over HTTPS, the
+      gateway authenticates the token, pins the recipient, redacts secrets, then
+      queues and delivers to your inbox or a webhook. No broker, no dashboard,
+      no agents choosing where mail goes.
+    </p>
+    <p class="cta">
+      <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Self-host now</a>
+      <a class="btn" href="#waitlist">Join the Cloud waitlist</a>
+    </p>
+    <p class="note">Recipients are resolved server-side from the token — agents set no headers and cannot redirect mail.</p>
+  </section>
+
+  <section id="who" aria-labelledby="who-h">
+    <h2 id="who-h">Who it's for</h2>
+    <ul class="cards">
+      <li>
+        <h3>Developers running many agents</h3>
+        <p>One gateway for every project. A per-project token points at a fixed
+        recipient, so a stray prompt can't mail someone else.</p>
+      </li>
+      <li>
+        <h3>Small teams and self-hosters</h3>
+        <p>PostgreSQL is the queue, audit log, and credential store. Deploy it
+        with Docker or NixOS; SMTP or a webhook sink is enough.</p>
+      </li>
+      <li>
+        <h3>CI and long-running jobs</h3>
+        <p>Notify on the terminal state only — success, failure, or blocked —
+        not on every step. At-least-once delivery with backoff and a dead state.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="split" id="self-host" aria-labelledby="host-h">
+    <div>
+      <h2 id="host-h">Self-host now</h2>
+      <p>No account, no build step. Clone, start Compose, create a token, and
+      send your first event in under ten minutes.</p>
+      <p>
+        <a class="btn btn-primary" href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Quickstart</a>
+        <a class="btn" href="https://github.com/marcustut/herald/blob/main/docs/self-hosting-docker.md">Docker operations</a>
+      </p>
+    </div>
+    <div id="cloud">
+      <h2>Cloud — coming</h2>
+      <p>Herald Cloud will run the gateway and dispatcher for you, so you only
+      manage tokens. No pricing yet; it is not live.</p>
+      <p><a class="btn" href="#waitlist">Tell me when it's ready</a></p>
+    </div>
+  </section>
+
+  <section id="demo" aria-labelledby="demo-h">
+    <h2 id="demo-h">Demo</h2>
+    <p>Install the skill so an agent notifies you <strong>only when you ask</strong>,
+    then send from the CLI or straight over HTTP.</p>
+    <pre class="terminal" tabindex="0"><code>$ herald skill &gt; ~/.claude/skills/herald-notify/SKILL.md
+$ export HERALD_TOKEN=herald_axis_&lt;secret&gt;
+
+$ herald send --status success --title "deploy finished" \
+    --link "PR=https://github.com/example/repo/pull/42"
+evt_9f3c2a…
+
+  ┌───────────────────────────────────────────┐
+  │ From: Herald &lt;herald@example.com&gt;          │
+  │ Subject: ✅ deploy finished                │
+  │                                           │
+  │ deploy finished                           │
+  │ PR · https://github.com/example/repo/pull/42 │
+  └───────────────────────────────────────────┘</code></pre>
+    <p class="note">The gateway is independent of the harness: CLI, MCP
+    (<code>send_event</code>), or a lifecycle hook all hit
+    <code>POST /v1/events</code>.</p>
+  </section>
+
+  <section id="waitlist" aria-labelledby="waitlist-h">
+    <h2 id="waitlist-h">Cloud waitlist</h2>
+    <p>Leave an address if you want a note when Cloud opens. Self-host users do
+    not need this.</p>
+    <!--
+      This form is intentionally inert: action is empty and no data leaves the
+      page. To collect addresses, point action at your own endpoint or a
+      privacy-preserving provider and set method="post". See docs/launch.md.
+    -->
+    <form class="waitlist" action="" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email"
+             placeholder="you@example.com" required>
+      <label class="consent">
+        <input name="consent" type="checkbox" value="yes" required>
+        <span>I agree to be contacted once about Herald Cloud, and nothing else.</span>
+      </label>
+      <button class="btn btn-primary" type="submit">Join the waitlist</button>
+      <p class="note">
+        This form does not send your address anywhere yet — the operator must
+        wire it up. See the <a href="#privacy">privacy note</a>.
+      </p>
+    </form>
+  </section>
+
+  <section id="privacy" aria-labelledby="privacy-h">
+    <h2 id="privacy-h">Privacy</h2>
+    <ul>
+      <li>No third-party trackers, cookies, or external fonts on this page. It
+      is a static file; nothing loads from anyone else's server.</li>
+      <li>The waitlist form is a placeholder and stays inert until wired to a
+      first-party endpoint. Consent is required and collected only for that
+      one email.</li>
+      <li>To measure visits without tracking people, the operator can parse
+      server logs or self-host privacy-preserving analytics — described in
+      <a href="https://github.com/marcustut/herald/blob/main/docs/launch.md">docs/launch.md</a>.</li>
+      <li>Questions: <a href="mailto:hello@example.com">hello@example.com</a>.</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <nav aria-label="Footer">
+    <a href="https://github.com/marcustut/herald/blob/main/docs/quickstart.md">Install</a>
+    <a href="https://github.com/marcustut/herald/tree/main/docs">Docs</a>
+    <a href="https://github.com/marcustut/herald">GitHub</a>
+    <a href="https://github.com/marcustut/herald/blob/main/LICENSE">MIT License</a>
+  </nav>
+  <p>Herald is open source under the MIT License.</p>
+</footer>
+
+</body>
+</html>
