@@ -13,9 +13,13 @@ import (
 // Dispatcher drains the delivery queue: it claims due deliveries, pushes each
 // event to its sink, and records success or schedules a retry.
 type Dispatcher struct {
-	Deliveries  DeliveryStore
-	Events      EventStore
-	Sinks       map[domain.SinkID]Sink
+	Deliveries DeliveryStore
+	Events     EventStore
+	// Sinks resolves the sink for a delivery at delivery time. A hosted
+	// deployment loads the destination from the database so a removed, disabled
+	// or unverified destination stops receiving immediately; a self-host
+	// deployment uses a static SinkMap built from gateway.toml.
+	Sinks       SinkSource
 	Clock       Clock
 	Lease       time.Duration
 	MaxAttempts int
@@ -60,13 +64,22 @@ func (d Dispatcher) process(ctx context.Context, del *domain.Delivery) error {
 	}
 	start := now
 	var deliveryErr error
-	if !ok {
+	switch {
+	case !ok:
 		deliveryErr = Permanent(fmt.Errorf("event %q not found", del.EventID))
-	} else if sink, ok := d.Sinks[del.SinkID]; !ok {
+	case d.Sinks == nil:
 		deliveryErr = Permanent(fmt.Errorf("unknown sink %q", del.SinkID))
-	} else {
-		start = d.Clock.Now()
-		deliveryErr = sink.Deliver(ctx, event)
+	default:
+		sink, found, err := d.Sinks.Sink(ctx, event.TenantID, event.ProjectID, del.SinkID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			deliveryErr = Permanent(fmt.Errorf("unknown sink %q", del.SinkID))
+		} else {
+			start = d.Clock.Now()
+			deliveryErr = sink.Deliver(ctx, event)
+		}
 	}
 	if deliveryErr != nil && d.Logger != nil {
 		d.Logger.Warn("delivery attempt failed",

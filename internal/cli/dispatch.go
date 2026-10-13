@@ -52,7 +52,9 @@ func runDispatch(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		defer st.close()
 	}
 
-	sinks, err := sink.Build(cfg, os.Getenv("HERALD_SMTP_USERNAME"), os.Getenv("HERALD_SMTP_PASSWORD"))
+	smtpUser := os.Getenv("HERALD_SMTP_USERNAME")
+	smtpPass := os.Getenv("HERALD_SMTP_PASSWORD")
+	sinks, err := sink.Build(cfg, smtpUser, smtpPass)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
@@ -61,7 +63,7 @@ func runDispatch(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	dispatcher := app.Dispatcher{
 		Deliveries:  st.deliveries,
 		Events:      st.events,
-		Sinks:       sinks,
+		Sinks:       dispatchSinks(cfg, st, sinks, smtpUser, smtpPass),
 		Clock:       systemClock{},
 		Lease:       *lease,
 		MaxAttempts: *maxAttempts,

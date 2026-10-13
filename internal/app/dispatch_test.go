@@ -30,7 +30,7 @@ func newDispatcher(deliveries *fakeDeliveries, events *fakeEvents, sinks map[dom
 	return Dispatcher{
 		Deliveries:  deliveries,
 		Events:      events,
-		Sinks:       sinks,
+		Sinks:       SinkMap(sinks),
 		Clock:       fakeClock{testNow},
 		Lease:       time.Minute,
 		MaxAttempts: 3,
@@ -125,6 +125,64 @@ func TestDispatchUnknownSink(t *testing.T) {
 	}
 	if got := deliveries.row("del_1").State; got != domain.DeliveryDead {
 		t.Fatalf("state = %q", got)
+	}
+}
+
+// recordingSource captures the tenant/project/id a delivery was resolved for,
+// so the dispatcher's ownership hand-off to a hosted source is pinned.
+type recordingSource struct {
+	tenant  domain.TenantID
+	project domain.ProjectID
+	id      domain.SinkID
+	sink    Sink
+	found   bool
+	err     error
+}
+
+func (s *recordingSource) Sink(_ context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.SinkID) (Sink, bool, error) {
+	s.tenant, s.project, s.id = tenant, project, id
+	if s.err != nil {
+		return nil, false, s.err
+	}
+	return s.sink, s.found, nil
+}
+
+// TestDispatchResolvesSinkByEventOwner proves the dispatcher hands the event's
+// stored (tenant, project) — never the delivery row — to the sink source.
+func TestDispatchResolvesSinkByEventOwner(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1") // tenant ten_1, project axis
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "dst_1", testNow))
+	sink := &fakeSink{id: "dst_1"}
+	src := &recordingSource{sink: sink, found: true}
+	uc := newDispatcher(deliveries, events, nil)
+	uc.Sinks = src
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if src.tenant != "ten_1" || src.project != "axis" || src.id != "dst_1" {
+		t.Fatalf("resolved for %q/%q/%q, want ten_1/axis/dst_1", src.tenant, src.project, src.id)
+	}
+	if sink.calls != 1 {
+		t.Fatalf("sink calls = %d, want 1", sink.calls)
+	}
+}
+
+// TestDispatchSourceNotFoundIsPermanent proves a source that declines to
+// resolve the id (removed, disabled or unknown) dead-letters without delivery.
+func TestDispatchSourceNotFoundIsPermanent(t *testing.T) {
+	events := newFakeEvents()
+	seedEvent(t, events, "evt_1")
+	deliveries := newFakeDeliveries(domain.NewDelivery("del_1", "evt_1", "dst_1", testNow))
+	uc := newDispatcher(deliveries, events, nil)
+	uc.Sinks = &recordingSource{found: false}
+
+	if _, err := uc.ProcessBatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := deliveries.row("del_1").State; got != domain.DeliveryDead {
+		t.Fatalf("state = %q, want dead", got)
 	}
 }
 

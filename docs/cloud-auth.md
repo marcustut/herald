@@ -92,8 +92,14 @@ never names an owner, and a project that belongs to another tenant resolves to
   verification tokens, so a stale link cannot resurrect it.
 
 Hosted deployments wire `postgres.Ownership.EnabledSinks` as the sink directory
-when `cloud.enabled` is set; a self-hosted deployment keeps the config-driven
-`sink.Directory` from `gateway.toml`.
+when `cloud.enabled` is set, so a project's events fan out only to enabled and
+verified destinations. The dispatcher then resolves each queued delivery against
+the **current** destination row (`sink.DestinationSource`): a destination that is
+removed, disabled or unverified after the event was queued is not delivered to,
+and its delivery dead-letters. Email rows build the same SMTP sink as self-host
+(including the 5xx bounce classification); webhook rows POST through the same
+hardened, SSRF-guarded client. A self-hosted deployment keeps the config-driven
+`sink.Directory` and `sink.Build(gateway.toml)` path unchanged.
 
 ## Magic-link security model
 

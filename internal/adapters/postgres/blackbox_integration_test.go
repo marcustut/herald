@@ -61,7 +61,7 @@ func openMigrated(t *testing.T) (*pgxpool.Pool, context.Context) {
 		t.Fatalf("open database: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS sessions, login_tokens, destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
+	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS destination_verifications, sessions, login_tokens, destinations, projects, users, tenants, accounts, deliveries, events, reports, credentials, schema_migrations CASCADE`); err != nil {
 		t.Fatalf("reset schema: %v", err)
 	}
 	if err := postgres.Migrate(ctx, pool); err != nil {
@@ -203,7 +203,7 @@ func (h *harness) dispatcher(maxAttempts int) app.Dispatcher {
 	return app.Dispatcher{
 		Deliveries:  h.events,
 		Events:      h.events,
-		Sinks:       map[domain.SinkID]app.Sink{"email": h.sink},
+		Sinks:       app.SinkMap{"email": h.sink},
 		Clock:       h.clock,
 		Lease:       time.Minute,
 		MaxAttempts: maxAttempts,

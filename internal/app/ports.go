@@ -175,6 +175,24 @@ type SinkDirectory interface {
 	EnabledSinks(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]domain.SinkID, error)
 }
 
+// SinkSource resolves the sink a delivery is pushed to. The tenant and project
+// come from the stored event, never from the delivery row, so a source can
+// scope the lookup to the owner. A config-built source is static; a hosted
+// source loads the destination row on every call, so removal, disablement or a
+// revoked verification takes effect immediately.
+type SinkSource interface {
+	Sink(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id domain.SinkID) (Sink, bool, error)
+}
+
+// SinkMap is a static SinkSource over sinks built at startup (the self-host
+// gateway.toml path).
+type SinkMap map[domain.SinkID]Sink
+
+func (m SinkMap) Sink(_ context.Context, _ domain.TenantID, _ domain.ProjectID, id domain.SinkID) (Sink, bool, error) {
+	s, ok := m[id]
+	return s, ok, nil
+}
+
 // ProjectStore persists the tenant-owned projects an account provisions. Every
 // method is scoped by tenant: a project slug is unique per tenant, and a
 // lookup that does not match the owning tenant must report not-found rather
