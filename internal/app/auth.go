@@ -3,9 +3,15 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/marcustut/herald/internal/domain"
 )
+
+// lastUsedWindow throttles the best-effort last-used write: a token in active
+// use is stamped at most once per window, so a busy project does not pay a
+// database write on every submit.
+const lastUsedWindow = 10 * time.Minute
 
 // Authenticator resolves bearer tokens to principals.
 type Authenticator struct {
@@ -47,5 +53,17 @@ func (a Authenticator) Authenticate(ctx context.Context, bearer string, requeste
 	if !cred.Allows(project) {
 		return domain.Principal{}, ErrUnauthenticated
 	}
+	a.recordLastUsed(ctx, cred)
 	return domain.NewPrincipal(cred.TenantID, project)
+}
+
+// recordLastUsed stamps the credential's last-used time when the stored value
+// is older than the throttle window. It is best-effort telemetry: a failed
+// write is ignored, so it can never fail an otherwise-valid submit.
+func (a Authenticator) recordLastUsed(ctx context.Context, cred Credential) {
+	now := time.Now()
+	if now.Sub(cred.LastUsedAt) < lastUsedWindow {
+		return
+	}
+	_ = a.Store.TouchLastUsed(ctx, cred.Hash, now)
 }

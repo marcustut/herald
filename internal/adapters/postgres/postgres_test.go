@@ -70,6 +70,17 @@ func TestIntegration(t *testing.T) {
 	if _, err := creds.ProjectCredential(ctx, "ten_1", "axis"); err != nil {
 		t.Fatal(err)
 	}
+	// last-used is a hash-keyed write; an unknown hash is a no-op, not an error.
+	usedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if err := creds.TouchLastUsed(ctx, "h1", usedAt); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := creds.ByHash(ctx, "h1"); err != nil || !got.LastUsedAt.Equal(usedAt) {
+		t.Fatalf("last-used = %v err %v, want %v", got.LastUsedAt, err, usedAt)
+	}
+	if err := creds.TouchLastUsed(ctx, "missing", usedAt); err != nil {
+		t.Fatalf("unknown hash must be a no-op: %v", err)
+	}
 
 	events := NewEvents(pool)
 	rep := domain.Event{

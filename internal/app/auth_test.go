@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/marcustut/herald/internal/domain"
 )
@@ -74,6 +75,75 @@ func TestAuthenticateStoreErrorIsNotUnauthenticated(t *testing.T) {
 	auth := Authenticator{Store: store, Hasher: fakeHasher{}}
 	if _, err := auth.Authenticate(context.Background(), raw, ""); !errors.Is(err, boom) {
 		t.Fatalf("store error: err = %v", err)
+	}
+}
+
+func TestAuthenticateRecordsLastUsed(t *testing.T) {
+	store := newFakeStore()
+	raw, err := newIssuer(store).IssueProjectToken(context.Background(), "ten_1", "axis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := fakeHasher{}.Hash(raw)
+	auth := Authenticator{Store: store, Hasher: fakeHasher{}}
+	if _, err := auth.Authenticate(context.Background(), raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.ByHash(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastUsedAt.IsZero() {
+		t.Fatal("last-used was not recorded on authentication")
+	}
+}
+
+func TestAuthenticateThrottlesLastUsed(t *testing.T) {
+	store := newFakeStore()
+	raw, err := newIssuer(store).IssueProjectToken(context.Background(), "ten_1", "axis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := fakeHasher{}.Hash(raw)
+	auth := Authenticator{Store: store, Hasher: fakeHasher{}}
+
+	// Within the window: no write.
+	fresh := store.byHash[hash]
+	fresh.LastUsedAt = time.Now().Add(-time.Minute)
+	store.byHash[hash] = fresh
+	if _, err := auth.Authenticate(context.Background(), raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if store.touches != 0 {
+		t.Fatalf("within window: touches = %d, want 0", store.touches)
+	}
+
+	// Older than the window: write once.
+	stale := store.byHash[hash]
+	stale.LastUsedAt = time.Now().Add(-lastUsedWindow - time.Minute)
+	store.byHash[hash] = stale
+	if _, err := auth.Authenticate(context.Background(), raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if store.touches != 1 {
+		t.Fatalf("past window: touches = %d, want 1", store.touches)
+	}
+}
+
+func TestAuthenticateLastUsedWriteFailureIsBestEffort(t *testing.T) {
+	store := newFakeStore()
+	raw, err := newIssuer(store).IssueProjectToken(context.Background(), "ten_1", "axis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.touchErr = errors.New("db down")
+	auth := Authenticator{Store: store, Hasher: fakeHasher{}}
+	p, err := auth.Authenticate(context.Background(), raw, "")
+	if err != nil {
+		t.Fatalf("a failed telemetry write must not fail authentication: %v", err)
+	}
+	if p.TenantID != "ten_1" || p.ProjectID != "axis" {
+		t.Fatalf("got %+v", p)
 	}
 }
 
