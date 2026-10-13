@@ -93,7 +93,7 @@ func TestEmailMessageIsParseable(t *testing.T) {
 }
 
 func TestFormatFrom(t *testing.T) {
-	const addr = "herald@marcustut.me"
+	const addr = "herald@example.com"
 	tests := []struct {
 		name string
 		from string
@@ -127,14 +127,14 @@ func TestEmailFromHeader(t *testing.T) {
 		fromName string
 		want     string
 	}{
-		{"Herald", "Herald <herald@marcustut.me>"},
-		{"", "herald@marcustut.me"},
-		{"Herald, Inc.", `"Herald, Inc." <herald@marcustut.me>`},
-		{"Héraut", "=?utf-8?q?H=C3=A9raut?= <herald@marcustut.me>"},
-		{"Herald\r\nBcc: evil@x", `"HeraldBcc: evil@x" <herald@marcustut.me>`},
+		{"Herald", "Herald <herald@example.com>"},
+		{"", "herald@example.com"},
+		{"Herald, Inc.", `"Herald, Inc." <herald@example.com>`},
+		{"Héraut", "=?utf-8?q?H=C3=A9raut?= <herald@example.com>"},
+		{"Herald\r\nBcc: evil@x", `"HeraldBcc: evil@x" <herald@example.com>`},
 	}
 	for _, tt := range tests {
-		s := NewEmail("email", EmailConfig{From: "herald@marcustut.me", FromName: tt.fromName, Recipient: "me@x"})
+		s := NewEmail("email", EmailConfig{From: "herald@example.com", FromName: tt.fromName, Recipient: "me@x"})
 		msg, err := s.buildMessage(sampleEvent())
 		if err != nil {
 			t.Fatal(err)
