@@ -18,6 +18,7 @@ const version = "0.1.0"
 const usage = `herald — agent event gateway
 
 Usage:
+  herald init  [--config FILE] [--project NAME] [--gateway URL] [--force] [--no-guidance]
   herald serve [--config FILE] [--database-url URL] [--dev] [--dispatch] [--issue-token PROJECT]
   herald dispatch [--config FILE] --database-url URL [--workers N]
   herald send  [--config FILE] --status STATUS --title TITLE [--body TEXT]
@@ -42,6 +43,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 2
 	}
 	switch args[0] {
+	case "init":
+		return runInit(ctx, args[1:], stdout, stderr)
 	case "serve":
 		return runServe(ctx, args[1:], stdout, stderr)
 	case "dispatch":
@@ -98,8 +101,11 @@ func gatewayClient(configPath string) (client.Client, string, string, string, er
 		gateway = v
 	}
 	if gateway == "" {
-		return client.Client{}, "", "", "", fmt.Errorf("gateway URL is required (herald.toml or HERALD_GATEWAY)")
+		return client.Client{}, "", "", "", fmt.Errorf("gateway URL is missing: set gateway in herald.toml or HERALD_GATEWAY (herald init writes it)")
 	}
 	token := os.Getenv("HERALD_TOKEN")
+	if token == "" {
+		return client.Client{}, "", "", "", fmt.Errorf("HERALD_TOKEN is missing: issue one with `herald token create --project <name>` and export it")
+	}
 	return client.Client{Gateway: gateway, Token: token}, project, os.Getenv("HERALD_AGENT"), os.Getenv("HERALD_HOST"), nil
 }
