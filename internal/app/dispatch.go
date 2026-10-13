@@ -73,17 +73,22 @@ func (d Dispatcher) process(ctx context.Context, del *domain.Delivery) error {
 			"sink", del.SinkID, "event", del.EventID, "attempts", del.Attempts, "error", deliveryErr)
 	}
 	err = d.finish(ctx, del, now, deliveryErr, deliveryErr == nil)
-	d.observer().ObserveDelivery(del.SinkID, outcomeOf(del.State), d.Clock.Now().Sub(start))
+	d.observer().ObserveDelivery(del.SinkID, outcomeOf(del.State, deliveryErr), d.Clock.Now().Sub(start))
 	return err
 }
 
 // outcomeOf maps the terminal/retry state a delivery landed in to the bounded
-// outcome label.
-func outcomeOf(state domain.DeliveryState) DeliveryOutcome {
+// outcome label. A dead delivery whose cause was a recipient bounce is counted
+// as a bounce, so hard rejections are visible separately from other dead
+// letters.
+func outcomeOf(state domain.DeliveryState, cause error) DeliveryOutcome {
 	switch state {
 	case domain.DeliveryDelivered:
 		return OutcomeDelivered
 	case domain.DeliveryDead:
+		if IsBounce(cause) {
+			return OutcomeBounce
+		}
 		return OutcomeDead
 	default:
 		return OutcomeRetry
@@ -117,6 +122,9 @@ func (d Dispatcher) Run(ctx context.Context, interval time.Duration) error {
 		} else {
 			now := d.Clock.Now()
 			d.observer().ObserveDispatchPoll(now)
+			if depth, err := d.Deliveries.Backlog(ctx); err == nil {
+				d.observer().ObserveQueueDepth(depth)
+			}
 			if d.Heartbeat != nil {
 				d.Heartbeat.Beat(now)
 			}

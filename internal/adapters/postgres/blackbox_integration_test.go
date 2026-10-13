@@ -27,6 +27,7 @@ import (
 	"github.com/marcustut/herald/internal/adapters/hash"
 	"github.com/marcustut/herald/internal/adapters/httpapi"
 	"github.com/marcustut/herald/internal/adapters/id"
+	"github.com/marcustut/herald/internal/adapters/memory"
 	"github.com/marcustut/herald/internal/adapters/postgres"
 	"github.com/marcustut/herald/internal/adapters/secret"
 	"github.com/marcustut/herald/internal/app"
@@ -556,5 +557,48 @@ func TestIntegrationConcurrentDispatchersDeliverEachOnce(t *testing.T) {
 		if row.State != domain.DeliveryDelivered {
 			t.Fatalf("delivery %s state = %s, want delivered", row.ID, row.State)
 		}
+	}
+}
+
+// TestIntegrationQueueDepthAndBackpressure proves the durable queue depth is
+// scoped by (tenant, project) and that the submit limiter applies the Queued
+// cap against it: a congested project is rejected with the queue scope while a
+// different tenant sharing the same project slug keeps its own budget.
+func TestIntegrationQueueDepthAndBackpressure(t *testing.T) {
+	h := newHarness(t)
+	h.saveEvent(t, "evt_q1", "q1")
+	h.saveEvent(t, "evt_q2", "q2")
+
+	if n, err := h.events.Outstanding(h.ctx, "ten_1", "axis"); err != nil || n != 2 {
+		t.Fatalf("outstanding = %d, err %v, want 2", n, err)
+	}
+	if n, err := h.events.Outstanding(h.ctx, "ten_1", "finance"); err != nil || n != 0 {
+		t.Fatalf("cross-project outstanding = %d, err %v, want 0", n, err)
+	}
+	if n, err := h.events.Outstanding(h.ctx, "ten_2", "axis"); err != nil || n != 0 {
+		t.Fatalf("cross-tenant outstanding = %d, err %v, want 0", n, err)
+	}
+	if n, err := h.events.Backlog(h.ctx); err != nil || n != 2 {
+		t.Fatalf("backlog = %d, err %v, want 2", n, err)
+	}
+
+	limiter := memory.NewRateLimiter(map[domain.ProjectID]app.Limits{
+		"axis": {Requests: 1000, Window: time.Minute, Daily: 100000, Monthly: 100000, Queued: 1},
+	}, h.clock, h.events)
+	if d, err := limiter.Allow(h.ctx, "ten_1", "axis"); err != nil || d.Allowed || d.Scope != app.ScopeQueue {
+		t.Fatalf("over-cap decision = %+v, err %v, want queue rejection", d, err)
+	}
+	if d, err := limiter.Allow(h.ctx, "ten_2", "axis"); err != nil || !d.Allowed {
+		t.Fatalf("tenant B throttled by tenant A backlog: %+v, err %v", d, err)
+	}
+
+	if _, err := h.dispatcher(8).ProcessBatch(h.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := h.events.Outstanding(h.ctx, "ten_1", "axis"); err != nil || n != 0 {
+		t.Fatalf("outstanding after drain = %d, err %v, want 0", n, err)
+	}
+	if d, err := limiter.Allow(h.ctx, "ten_1", "axis"); err != nil || !d.Allowed {
+		t.Fatalf("after drain blocked: %+v, err %v", d, err)
 	}
 }

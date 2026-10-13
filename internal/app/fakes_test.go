@@ -147,9 +147,13 @@ func (r *fakeEvents) ByID(_ context.Context, id domain.EventID) (domain.Event, b
 }
 
 type fakeDeliveries struct {
-	rows      []domain.Delivery
-	claimErr  error
-	updateErr error
+	rows           []domain.Delivery
+	claimErr       error
+	updateErr      error
+	outstanding    int
+	outstandingErr error
+	backlog        int
+	backlogErr     error
 }
 
 func newFakeDeliveries(ds ...domain.Delivery) *fakeDeliveries {
@@ -250,6 +254,20 @@ func (s *fakeDeliveries) Requeue(_ context.Context, f DeliveryFilter, now time.T
 
 func (s *fakeDeliveries) ReclaimExpired(_ context.Context, now time.Time) (int, error) {
 	return s.reclaimExpired(now), nil
+}
+
+func (s *fakeDeliveries) Outstanding(_ context.Context, _ domain.TenantID, _ domain.ProjectID) (int, error) {
+	if s.outstandingErr != nil {
+		return 0, s.outstandingErr
+	}
+	return s.outstanding, nil
+}
+
+func (s *fakeDeliveries) Backlog(_ context.Context) (int, error) {
+	if s.backlogErr != nil {
+		return 0, s.backlogErr
+	}
+	return s.backlog, nil
 }
 
 func (s *fakeDeliveries) reclaimExpired(now time.Time) int {

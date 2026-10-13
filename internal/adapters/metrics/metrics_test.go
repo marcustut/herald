@@ -68,6 +68,42 @@ func TestObserveDelivery(t *testing.T) {
 	}
 }
 
+func TestObserveSubmitRejectionsAndBacklog(t *testing.T) {
+	r := metrics.NewRegistry()
+	r.ObserveSubmitRejection(app.ScopeQueue)
+	r.ObserveSubmitRejection(app.ScopeRequests)
+	r.ObserveSubmitRejection(app.ScopeQueue)
+	r.ObserveSubmitRejection("not-a-scope")
+	r.ObserveQueueDepth(42)
+
+	body := scrape(t, r)
+	for _, want := range []string{
+		"# TYPE herald_submit_rejections_total counter",
+		`herald_submit_rejections_total{scope="queue"} 2`,
+		`herald_submit_rejections_total{scope="requests"} 1`,
+		`herald_submit_rejections_total{scope="other"} 1`,
+		"# TYPE herald_delivery_backlog gauge",
+		"herald_delivery_backlog 42",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics output missing %q\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "not-a-scope") {
+		t.Fatalf("unbounded scope leaked\n%s", body)
+	}
+}
+
+func TestObserveBounceOutcome(t *testing.T) {
+	r := metrics.NewRegistry()
+	r.ObserveDelivery("email", app.OutcomeBounce, time.Millisecond)
+
+	body := scrape(t, r)
+	if !strings.Contains(body, `herald_delivery_outcomes_total{outcome="bounce",sink="email"} 1`) {
+		t.Fatalf("bounce outcome missing\n%s", body)
+	}
+}
+
 func TestDispatchPollGauge(t *testing.T) {
 	r := metrics.NewRegistry()
 	now := time.Unix(1_760_000_000, 0)

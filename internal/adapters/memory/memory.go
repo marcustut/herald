@@ -195,6 +195,34 @@ func (s *Events) ReclaimExpired(_ context.Context, now time.Time) (int, error) {
 	return s.reclaimExpiredLocked(now), nil
 }
 
+func (s *Events) Outstanding(_ context.Context, tenant domain.TenantID, project domain.ProjectID) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	n := 0
+	for _, d := range s.deliveries {
+		if d.State != domain.DeliveryPending && d.State != domain.DeliveryInflight {
+			continue
+		}
+		e, ok := s.events[d.EventID]
+		if ok && e.TenantID == tenant && e.ProjectID == project {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (s *Events) Backlog(_ context.Context) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	n := 0
+	for _, d := range s.deliveries {
+		if d.State == domain.DeliveryPending || d.State == domain.DeliveryInflight {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (s *Events) reclaimExpiredLocked(now time.Time) int {
 	n := 0
 	for i := range s.deliveries {

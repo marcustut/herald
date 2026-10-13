@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -172,6 +173,22 @@ func TestEmailTransportErrorIsRetryable(t *testing.T) {
 	err := s.Deliver(context.Background(), sampleEvent())
 	if err == nil || app.IsPermanent(err) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A permanent SMTP 5xx reply is a hard bounce: dead-lettered, not retried. A
+// 4xx (temporary) stays retryable.
+func TestEmailSMTPClassification(t *testing.T) {
+	bounce := NewEmail("email", EmailConfig{From: "h@x", Recipient: "m@x"}).
+		WithTransport(&fakeTransport{err: &textproto.Error{Code: 550, Msg: "no such user"}})
+	if err := bounce.Deliver(context.Background(), sampleEvent()); !app.IsBounce(err) || !app.IsPermanent(err) {
+		t.Fatalf("550 err = %v, want permanent bounce", err)
+	}
+
+	defer200 := NewEmail("email", EmailConfig{From: "h@x", Recipient: "m@x"}).
+		WithTransport(&fakeTransport{err: &textproto.Error{Code: 450, Msg: "try later"}})
+	if err := defer200.Deliver(context.Background(), sampleEvent()); app.IsBounce(err) || app.IsPermanent(err) {
+		t.Fatalf("450 err = %v, want retryable", err)
 	}
 }
 

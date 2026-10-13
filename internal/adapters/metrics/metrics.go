@@ -92,6 +92,16 @@ func (r *Registry) ObserveDispatchPoll(now time.Time) {
 	r.set("herald_dispatcher_last_poll_timestamp_seconds", nil, float64(now.Unix()))
 }
 
+// ObserveSubmitRejection satisfies app.Observer.
+func (r *Registry) ObserveSubmitRejection(scope string) {
+	r.inc("herald_submit_rejections_total", labels{"scope": rejectScope(scope)})
+}
+
+// ObserveQueueDepth satisfies app.Observer.
+func (r *Registry) ObserveQueueDepth(depth int) {
+	r.set("herald_delivery_backlog", nil, float64(depth))
+}
+
 // ServeHTTP renders the registry in the Prometheus text exposition format.
 func (r *Registry) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -213,9 +223,11 @@ var meta = map[string][2]string{
 	"herald_http_requests_total":                    {"counter", "HTTP requests accepted, by route, method and status code."},
 	"herald_http_request_duration_seconds":          {"histogram", "HTTP request latency in seconds."},
 	"herald_delivery_attempts_total":                {"counter", "Delivery attempts, by sink."},
-	"herald_delivery_outcomes_total":                {"counter", "Delivery attempts, by sink and outcome (delivered, retry, dead)."},
+	"herald_delivery_outcomes_total":                {"counter", "Delivery attempts, by sink and outcome (delivered, retry, dead, bounce)."},
 	"herald_delivery_duration_seconds":              {"histogram", "Delivery attempt latency in seconds, by sink and outcome."},
 	"herald_dispatcher_last_poll_timestamp_seconds": {"gauge", "Unix time of the dispatcher's last successful queue poll."},
+	"herald_submit_rejections_total":                {"counter", "Submits rejected by a limit, by scope (requests, daily, monthly, queue)."},
+	"herald_delivery_backlog":                       {"gauge", "Pending and inflight deliveries across all tenants, sampled by the dispatcher."},
 }
 
 func writeMeta(b *strings.Builder, name string) {
@@ -235,6 +247,17 @@ func httpMethod(m string) string {
 	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,
 		http.MethodDelete, http.MethodHead, http.MethodOptions:
 		return m
+	default:
+		return "other"
+	}
+}
+
+// rejectScope bounds the rejection scope to the known app.Scope* values; an
+// empty or unknown scope becomes "other" so a caller cannot inflate cardinality.
+func rejectScope(s string) string {
+	switch s {
+	case app.ScopeRequests, app.ScopeDaily, app.ScopeMonthly, app.ScopeQueue:
+		return s
 	default:
 		return "other"
 	}

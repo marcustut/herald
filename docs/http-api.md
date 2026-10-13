@@ -125,6 +125,7 @@ with the offending `field` set.
 | `415` | `unsupported_media_type` | `Content-Type` is missing or not `application/json`. |
 | `422` | `validation_failed` | Well-formed JSON that violates a [validation rule](#validation-rules). |
 | `429` | `rate_limited` | Submit budget exhausted; see [Rate limiting](#rate-limiting). |
+| `503` | `queue_full` | The project’s delivery queue has reached its configured backlog cap; retry later. |
 | `503` | `unavailable` | A dependency (database, credential store) failed. Safe to retry. |
 
 Unregistered paths return `404`, and a known path with the wrong method returns
@@ -158,7 +159,8 @@ failure it hits:
 4. A bearer token must be present → otherwise `401`.
 5. Parse the JSON → otherwise `400 invalid_json`.
 6. Authenticate the token and resolve the project → otherwise `401` (or `503`).
-7. Check the rate limit → otherwise `429` (or `503`).
+7. Check the rate limit → otherwise `429`; or the queue backlog cap →
+   `503 queue_full` (or `503` for a dependency failure).
 8. Validate and store the event → `422`, or `503` for a dependency failure,
    otherwise `202`.
 
@@ -218,6 +220,24 @@ X-RateLimit-Reset: 1760000060
 Clients should honour `Retry-After`. The shipped limiter is in-memory and
 single-instance; see [docs/rate-limiting.md](rate-limiting.md) for the trade-off
 and tuning.
+
+### Queue backpressure
+
+A project may also set a `queued` cap: the maximum number of deliveries it may
+have outstanding (pending or inflight) at once. When the durable backlog reaches
+the cap, a submit is rejected **before any event is stored** with
+`503 queue_full` and `Retry-After`:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Retry-After: 30
+X-RateLimit-Limit: 500
+
+{"error":{"code":"queue_full","message":"the project delivery queue is congested; retry later"}}
+```
+
+The cap is **per `(tenant, project)`**, so one tenant's congested queue never
+throttles another. It is off unless configured.
 
 ## The deprecated `/v1/reports` alias
 

@@ -82,7 +82,7 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
-          $ref: "#/components/responses/Unavailable"
+          $ref: "#/components/responses/ServiceUnavailable"
   /v1/reports:
     post:
       tags: [Events]
@@ -130,7 +130,7 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
-          $ref: "#/components/responses/Unavailable"
+          $ref: "#/components/responses/ServiceUnavailable"
   /healthz:
     get:
       tags: [Health]
@@ -308,6 +308,7 @@ components:
             - unsupported_media_type
             - validation_failed
             - rate_limited
+            - queue_full
             - unavailable
         message:
           type: string
@@ -386,6 +387,29 @@ components:
             error:
               code: rate_limited
               message: submit limit exceeded
+    ServiceUnavailable:
+      description: |
+        The project delivery queue is congested (`queue_full`), or a dependency
+        (database, credential store) failed (`unavailable`). Both are safe to
+        retry; honour `Retry-After` when present.
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            queueFull:
+              value:
+                error:
+                  code: queue_full
+                  message: the project delivery queue is congested; retry later
+            unavailable:
+              value:
+                error:
+                  code: unavailable
+                  message: service unavailable
     Unavailable:
       description: A dependency failed; safe to retry.
       content:

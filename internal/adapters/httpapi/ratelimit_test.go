@@ -37,7 +37,7 @@ func newLimitedHarness(t *testing.T, limits map[domain.ProjectID]app.Limits) *li
 			IDs:    id.Random{},
 			Clock:  fixedClock{},
 		},
-		Limiter: memory.NewRateLimiter(limits, fixedClock{}),
+		Limiter: memory.NewRateLimiter(limits, fixedClock{}, nil),
 	}
 	ts := httptest.NewServer(api.Handler())
 	t.Cleanup(ts.Close)
@@ -147,6 +147,50 @@ func TestRateLimitAppliesToLegacyAlias(t *testing.T) {
 	}
 	if got := h.post(t, "/v1/reports", token, validBody).StatusCode; got != http.StatusTooManyRequests {
 		t.Fatalf("legacy alias status = %d, want 429", got)
+	}
+}
+
+// stubQueue is a QueueGauge with a fixed depth, used to drive backpressure.
+type stubQueue struct{ depth int }
+
+func (q stubQueue) Outstanding(context.Context, domain.TenantID, domain.ProjectID) (int, error) {
+	return q.depth, nil
+}
+
+// A project whose durable queue is congested gets 503 queue_full with a
+// Retry-After, distinct from a 429 rate limit.
+func TestSubmitQueueFullIs503(t *testing.T) {
+	creds := memory.NewCredentials()
+	events := memory.NewEvents()
+	issuer := app.Issuer{Store: creds, Hasher: hash.SHA256{}, Secrets: secret.Generator{}, Clock: fixedClock{}}
+	api := &httpapi.Server{
+		Auth: app.Authenticator{Store: creds, Hasher: hash.SHA256{}},
+		Submit: app.SubmitEvent{
+			Events: events,
+			Sinks:  staticSinks{"email"},
+			IDs:    id.Random{},
+			Clock:  fixedClock{},
+		},
+		Limiter: memory.NewRateLimiter(map[domain.ProjectID]app.Limits{
+			"axis": {Requests: 100, Window: time.Minute, Daily: 1000, Monthly: 1000, Queued: 1},
+		}, fixedClock{}, stubQueue{depth: 5}),
+	}
+	ts := httptest.NewServer(api.Handler())
+	t.Cleanup(ts.Close)
+
+	raw, err := issuer.IssueProjectToken(context.Background(), "ten_1", "axis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := postTo(t, ts.URL, raw, "application/json", validBody)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	if got := decodeError(t, resp); got != "queue_full:" {
+		t.Fatalf("error = %q, want queue_full", got)
+	}
+	if retry := resp.Header.Get("Retry-After"); retry == "" {
+		t.Fatal("missing Retry-After")
 	}
 }
 

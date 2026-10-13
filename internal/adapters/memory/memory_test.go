@@ -77,3 +77,41 @@ func TestEvents(t *testing.T) {
 		t.Fatalf("deliveries = %+v", got)
 	}
 }
+
+// Queue depth is scoped by (tenant, project): two tenants sharing a slug, and a
+// second project, each count their own outstanding deliveries.
+func TestQueueDepth(t *testing.T) {
+	ctx := context.Background()
+	store := NewEvents()
+	for _, tc := range []struct {
+		id, tenant, project string
+		state               domain.DeliveryState
+	}{
+		{"evt_a", "ten_a", "axis", domain.DeliveryPending},
+		{"evt_b", "ten_b", "axis", domain.DeliveryPending},
+		{"evt_c", "ten_a", "finance", domain.DeliveryDelivered},
+	} {
+		event := domain.Event{ID: domain.EventID(tc.id), TenantID: domain.TenantID(tc.tenant), ProjectID: domain.ProjectID(tc.project), IdempotencyKey: "k"}
+		d := domain.Delivery{ID: domain.DeliveryID("del_" + tc.id), EventID: event.ID, SinkID: "email", State: tc.state}
+		if err := store.Save(ctx, event, []domain.Delivery{d}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		tenant, project string
+		want            int
+	}{
+		{"ten_a", "axis", 1},
+		{"ten_b", "axis", 1},
+		{"ten_a", "finance", 0},
+	} {
+		got, err := store.Outstanding(ctx, domain.TenantID(tc.tenant), domain.ProjectID(tc.project))
+		if err != nil || got != tc.want {
+			t.Fatalf("outstanding(%s,%s) = %d, err %v, want %d", tc.tenant, tc.project, got, err, tc.want)
+		}
+	}
+	if got, err := store.Backlog(ctx); err != nil || got != 2 {
+		t.Fatalf("backlog = %d, err %v, want 2", got, err)
+	}
+}

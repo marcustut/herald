@@ -78,7 +78,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 			IDs:    id.Random{},
 			Clock:  systemClock{},
 		},
-		Limiter: memory.NewRateLimiter(cfg.EffectiveLimits(), systemClock{}),
+		Limiter: memory.NewRateLimiter(cfg.EffectiveLimits(), systemClock{}, st.deliveries),
 		Logger:  logger,
 	}
 
