@@ -22,6 +22,19 @@ type Dispatcher struct {
 	Backoff     domain.Backoff
 	Batch       int
 	Logger      *slog.Logger
+	// Observer records delivery attempts and poll progress. Nil falls back to
+	// DefaultObserver.
+	Observer Observer
+	// Heartbeat is signalled after each successful poll so readiness can tell a
+	// stalled dispatcher from a live one. Nil disables the signal.
+	Heartbeat Heartbeat
+}
+
+func (d Dispatcher) observer() Observer {
+	if d.Observer != nil {
+		return d.Observer
+	}
+	return DefaultObserver
 }
 
 // ProcessBatch claims and processes up to Batch deliveries, returning how many
@@ -45,19 +58,36 @@ func (d Dispatcher) process(ctx context.Context, del *domain.Delivery) error {
 	if err != nil {
 		return err
 	}
+	start := now
+	var deliveryErr error
 	if !ok {
-		return d.finish(ctx, del, now, Permanent(fmt.Errorf("event %q not found", del.EventID)), false)
+		deliveryErr = Permanent(fmt.Errorf("event %q not found", del.EventID))
+	} else if sink, ok := d.Sinks[del.SinkID]; !ok {
+		deliveryErr = Permanent(fmt.Errorf("unknown sink %q", del.SinkID))
+	} else {
+		start = d.Clock.Now()
+		deliveryErr = sink.Deliver(ctx, event)
 	}
-	sink, ok := d.Sinks[del.SinkID]
-	if !ok {
-		return d.finish(ctx, del, now, Permanent(fmt.Errorf("unknown sink %q", del.SinkID)), false)
-	}
-	deliveryErr := sink.Deliver(ctx, event)
 	if deliveryErr != nil && d.Logger != nil {
 		d.Logger.Warn("delivery attempt failed",
 			"sink", del.SinkID, "event", del.EventID, "attempts", del.Attempts, "error", deliveryErr)
 	}
-	return d.finish(ctx, del, now, deliveryErr, deliveryErr == nil)
+	err = d.finish(ctx, del, now, deliveryErr, deliveryErr == nil)
+	d.observer().ObserveDelivery(del.SinkID, outcomeOf(del.State), d.Clock.Now().Sub(start))
+	return err
+}
+
+// outcomeOf maps the terminal/retry state a delivery landed in to the bounded
+// outcome label.
+func outcomeOf(state domain.DeliveryState) DeliveryOutcome {
+	switch state {
+	case domain.DeliveryDelivered:
+		return OutcomeDelivered
+	case domain.DeliveryDead:
+		return OutcomeDead
+	default:
+		return OutcomeRetry
+	}
 }
 
 // finish applies the terminal or retry transition and persists the row.
@@ -80,8 +110,16 @@ func (d Dispatcher) Run(ctx context.Context, interval time.Duration) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		if _, err := d.ProcessBatch(ctx); err != nil && ctx.Err() == nil && d.Logger != nil {
-			d.Logger.Error("dispatch batch", "error", err)
+		if _, err := d.ProcessBatch(ctx); err != nil {
+			if ctx.Err() == nil && d.Logger != nil {
+				d.Logger.Error("dispatch batch", "error", err)
+			}
+		} else {
+			now := d.Clock.Now()
+			d.observer().ObserveDispatchPoll(now)
+			if d.Heartbeat != nil {
+				d.Heartbeat.Beat(now)
+			}
 		}
 		select {
 		case <-ctx.Done():
