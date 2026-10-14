@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -416,7 +417,7 @@ func TestCloudProjectsPageMobileNavIsScrollStrip(t *testing.T) {
 // no third-party resource.
 func TestCloudDashboardFontsServed(t *testing.T) {
 	f := newCloudFixture(t, nil)
-	resp := f.do(t, http.MethodGet, "/dashboard/fonts/dm-sans-normal-400.woff2", "")
+	resp := f.do(t, http.MethodGet, "/fonts/dm-sans-normal-400.woff2", "")
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
@@ -431,10 +432,47 @@ func TestCloudDashboardFontsServed(t *testing.T) {
 	if len(body) == 0 {
 		t.Fatal("font body is empty")
 	}
-	missing := f.do(t, http.MethodGet, "/dashboard/fonts/nope.woff2", "")
+	missing := f.do(t, http.MethodGet, "/fonts/nope.woff2", "")
 	missing.Body.Close()
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown font = %d, want 404", missing.StatusCode)
+	}
+}
+
+// TestCloudProjectsPageIdsUniqueAndWired guards a class of bug the server-side
+// tests cannot see: the page JS addresses elements by id, so an id must be
+// unique (a section and its <tbody> sharing an id made getElementById return the
+// section, wiping the table when rows rendered) and every id the JS references
+// must exist in the markup.
+func TestCloudProjectsPageIdsUniqueAndWired(t *testing.T) {
+	f := newCloudFixture(t, nil)
+	resp := f.do(t, http.MethodGet, "/dashboard", "")
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(body)
+
+	seen := map[string]bool{}
+	for _, m := range regexp.MustCompile(`id="([a-zA-Z0-9_-]+)"`).FindAllStringSubmatch(page, -1) {
+		if seen[m[1]] {
+			t.Errorf("duplicate id %q in the dashboard markup", m[1])
+		}
+		seen[m[1]] = true
+	}
+
+	refs := map[string]bool{}
+	for _, m := range regexp.MustCompile(`\$\("([a-zA-Z0-9_-]+)"\)`).FindAllStringSubmatch(page, -1) {
+		refs[m[1]] = true
+	}
+	if len(refs) == 0 {
+		t.Fatal(`no $("id") references found; the dashboard JS may have changed shape`)
+	}
+	for id := range refs {
+		if !seen[id] {
+			t.Errorf("dashboard JS references id %q but no element has it", id)
+		}
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 // page is a thin shell over the JSON routes.
 func (c *Cloud) registerProjects(mux *http.ServeMux) {
 	mux.HandleFunc("GET /dashboard", c.handleProjectsPage)
-	mux.HandleFunc("GET /dashboard/fonts/{name}", c.handleDashboardFont)
+	mux.HandleFunc("GET /fonts/{name}", c.handleDashboardFont)
 	mux.HandleFunc("GET /v1/projects", c.handleListProjects)
 	mux.HandleFunc("POST /v1/projects", c.handleCreateProject)
 	mux.HandleFunc("DELETE /v1/projects/{project}", c.handleDeleteProject)
@@ -347,10 +347,10 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Herald dashboard</title>
 <style>
-  @font-face{font-family:"Instrument Serif";src:url("/dashboard/fonts/instrument-serif-normal-400.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-  @font-face{font-family:"Instrument Serif";src:url("/dashboard/fonts/instrument-serif-italic-400.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
-  @font-face{font-family:"DM Sans";src:url("/dashboard/fonts/dm-sans-normal-400.woff2") format("woff2");font-weight:400;font-display:swap}
-  @font-face{font-family:"JetBrains Mono";src:url("/dashboard/fonts/jetbrains-mono-normal-400.woff2") format("woff2");font-weight:400;font-display:swap}
+  @font-face{font-family:"Instrument Serif";src:url("fonts/instrument-serif-normal-400.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+  @font-face{font-family:"Instrument Serif";src:url("fonts/instrument-serif-italic-400.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
+  @font-face{font-family:"DM Sans";src:url("fonts/dm-sans-normal-400.woff2") format("woff2");font-weight:400;font-display:swap}
+  @font-face{font-family:"JetBrains Mono";src:url("fonts/jetbrains-mono-normal-400.woff2") format("woff2");font-weight:400;font-display:swap}
 
   :root{
     --bg:#0d0d0c; --surface:#141413; --surface-2:#1d1d1b;
@@ -713,7 +713,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
               <table>
                 <caption class="sr-only">Projects in this workspace, with their slug, creation date and row actions.</caption>
                 <thead><tr><th scope="col">Project</th><th scope="col">Slug</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-                <tbody id="projects"></tbody>
+                <tbody id="projects-body"></tbody>
               </table>
             </div>
           </div>
@@ -743,7 +743,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
               <table>
                 <caption class="sr-only">API tokens, their kind, the projects they can reach, last use and status.</caption>
                 <thead><tr><th scope="col">Id</th><th scope="col">Kind</th><th scope="col">Projects</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-                <tbody id="tokens"></tbody>
+                <tbody id="tokens-body"></tbody>
               </table>
             </div>
           </div>
@@ -780,7 +780,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
               <table>
                 <caption class="sr-only">Destinations across your projects, with kind, target and verification status.</caption>
                 <thead><tr><th scope="col">Project</th><th scope="col">Kind</th><th scope="col">Target</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-                <tbody id="destinations"></tbody>
+                <tbody id="destinations-body"></tbody>
               </table>
             </div>
           </div>
@@ -822,7 +822,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
               <table>
                 <caption class="sr-only">Your tenant's recent events, filterable by project and status.</caption>
                 <thead><tr><th scope="col">When</th><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Title</th><th scope="col">Agent</th></tr></thead>
-                <tbody id="events"></tbody>
+                <tbody id="events-body"></tbody>
               </table>
             </div>
             <div class="pager">
@@ -870,7 +870,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
               <table>
                 <caption class="sr-only">Your tenant's delivery attempts, newest first, by when, event id, sink, state, attempt count and last error.</caption>
                 <thead><tr><th scope="col">When</th><th scope="col">Event</th><th scope="col">Sink</th><th scope="col">State</th><th scope="col">Attempts</th><th scope="col">Last error</th></tr></thead>
-                <tbody id="deliveries"></tbody>
+                <tbody id="deliveries-body"></tbody>
               </table>
             </div>
             <div class="pager">
@@ -984,7 +984,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
   function reload() { return load(); }
 
   function renderProjects(projects) {
-    var body = $("projects");
+    var body = $("projects-body");
     body.textContent = "";
     projects.forEach(function (p) {
       var tr = el("tr");
@@ -1008,10 +1008,11 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
       body.appendChild(tr);
     });
     statCount("count-projects", projects.length);
+    statCount("stat-projects", projects.length);
   }
 
   function renderTokens(tokens) {
-    var body = $("tokens");
+    var body = $("tokens-body");
     body.textContent = "";
     tokens.forEach(function (t) {
       var tr = el("tr");
@@ -1032,6 +1033,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
       body.appendChild(tr);
     });
     statCount("count-tokens", tokens.filter(function (t) { return !t.revokedAt; }).length);
+    statCount("stat-tokens", tokens.filter(function (t) { return !t.revokedAt; }).length);
   }
 
   function emptyRow(cols, title, hint, reset) {
@@ -1050,7 +1052,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
   }
 
   function renderEvents(events) {
-    var body = $("events");
+    var body = $("events-body");
     body.textContent = "";
     if (!events.length) {
       body.appendChild(emptyRow(5, "No events match these filters", "Try a wider time range, or reset the filters to see everything.", resetEvents));
@@ -1068,7 +1070,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
   }
 
   function renderDeliveries(rows) {
-    var body = $("deliveries");
+    var body = $("deliveries-body");
     body.textContent = "";
     if (!rows.length) {
       body.appendChild(emptyRow(6, "No delivery attempts match these filters", "Try a wider time range, or reset the filters to see everything.", resetDeliveries));
@@ -1090,7 +1092,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
   }
 
   function renderDestinations(list) {
-    var body = $("destinations");
+    var body = $("destinations-body");
     body.textContent = "";
     if (!list.length) {
       body.appendChild(emptyRow(5, "No destinations yet", "Add one above to start receiving events.", function () { return Promise.resolve(); }));
@@ -1119,6 +1121,7 @@ var projectsPage = template.Must(template.New("projects").Parse(`<!doctype html>
       body.appendChild(tr);
     });
     statCount("count-destinations", list.length);
+    statCount("stat-destinations", list.length);
   }
 
   function qs(params) {
