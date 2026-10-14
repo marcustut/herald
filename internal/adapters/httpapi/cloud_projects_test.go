@@ -390,6 +390,54 @@ func TestCloudProjectsPageSignInShell(t *testing.T) {
 	}
 }
 
+// The one approved change from the Linear reference: on mobile the section nav
+// is a horizontally scrollable chip strip, not a wrapped two-row block.
+func TestCloudProjectsPageMobileNavIsScrollStrip(t *testing.T) {
+	f := newCloudFixture(t, nil)
+	resp := f.do(t, http.MethodGet, "/dashboard", "")
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(body)
+	if !strings.Contains(page, "nav-strip") {
+		t.Fatal("page is missing the mobile nav strip marker")
+	}
+	if !strings.Contains(page, "flex-wrap:nowrap;overflow-x:auto") {
+		t.Fatal("mobile nav is not the horizontally scrollable strip")
+	}
+	if !strings.Contains(page, "scrollbar-width:none") {
+		t.Fatal("mobile nav scrollbar is not visually hidden")
+	}
+}
+
+// The brand fonts are embedded and served from the dashboard, so the page uses
+// no third-party resource.
+func TestCloudDashboardFontsServed(t *testing.T) {
+	f := newCloudFixture(t, nil)
+	resp := f.do(t, http.MethodGet, "/dashboard/fonts/dm-sans-normal-400.woff2", "")
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("font = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "font/woff2" {
+		t.Fatalf("font content type = %q", ct)
+	}
+	if len(body) == 0 {
+		t.Fatal("font body is empty")
+	}
+	missing := f.do(t, http.MethodGet, "/dashboard/fonts/nope.woff2", "")
+	missing.Body.Close()
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown font = %d, want 404", missing.StatusCode)
+	}
+}
+
 // listTokens returns the raw JSON body of the token listing.
 func (f *cloudFixture) listTokens(t *testing.T) string {
 	t.Helper()

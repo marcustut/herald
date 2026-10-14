@@ -275,7 +275,7 @@ func TestDashboardPageRendersReadOnlySections(t *testing.T) {
 	for _, want := range []string{
 		"Recent events", "Delivery attempts", "Destinations",
 		`<label for="ev-project">`, `<label for="del-state">`,
-		`<caption>`, `class="tablewrap"`,
+		`<caption class="sr-only">`, `class="table-wrap"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard page is missing %q", want)
