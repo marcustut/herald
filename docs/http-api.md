@@ -122,7 +122,7 @@ with the offending `field` set.
 
 | Status | Code | When |
 |---|---|---|
-| `202` | — | Event accepted; body `{"id": "evt_…"}`. |
+| `202` | — | Event accepted; body `{"id": "evt_…", "deliveries": n}` (`deliveries` omitted on an idempotent retry). |
 | `400` | `invalid_json` | Body could not be read, or is not valid JSON. |
 | `401` | `unauthenticated` | Missing bearer token, or invalid/revoked/out-of-scope token. |
 | `413` | `payload_too_large` | Body exceeds the server’s maximum. |

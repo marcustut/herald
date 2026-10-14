@@ -140,7 +140,15 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 	if err != nil {
 		return toolError(err.Error())
 	}
-	return textResult("event accepted: " + res.ID)
+	msg := "event accepted: " + res.ID
+	if res.Deliveries == 0 {
+		scope := "this project"
+		if s.Project != "" {
+			scope = fmt.Sprintf("project %q", s.Project)
+		}
+		msg += fmt.Sprintf(" (stored, but %s has no verified destination — nothing will be delivered)", scope)
+	}
+	return textResult(msg)
 }
 
 func sendEventTool() map[string]any {

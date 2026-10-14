@@ -12,14 +12,15 @@ import (
 )
 
 type fakeSubmitter struct {
-	id  string
-	err error
-	got client.Event
+	id         string
+	deliveries int
+	err        error
+	got        client.Event
 }
 
 func (f *fakeSubmitter) Submit(_ context.Context, r client.Event) (client.Accepted, error) {
 	f.got = r
-	return client.Accepted{ID: f.id}, f.err
+	return client.Accepted{ID: f.id, Deliveries: f.deliveries}, f.err
 }
 
 func TestServe(t *testing.T) {
@@ -32,7 +33,7 @@ func TestServe(t *testing.T) {
 	}, "\n") + "\n")
 
 	var out bytes.Buffer
-	fake := &fakeSubmitter{id: "evt_9"}
+	fake := &fakeSubmitter{id: "evt_9", deliveries: 1}
 	s := &Server{Project: "axis", Agent: "herdr", Host: "h1", Client: fake, In: in, Out: &out}
 	if err := s.Serve(context.Background()); err != nil {
 		t.Fatal(err)
@@ -56,6 +57,32 @@ func TestServe(t *testing.T) {
 	}
 	if fake.got.OccurrenceID != "occ-1" || fake.got.IdempotencyKey != "k" {
 		t.Fatalf("submitter got %+v", fake.got)
+	}
+}
+
+// A no-destination project still accepts the event; the tool result must say so
+// so the agent does not report a delivered notification that never happened.
+func TestServeWarnsWhenNoDestination(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"t"}}}` + "\n")
+	var out bytes.Buffer
+	s := &Server{Project: "axis", Client: &fakeSubmitter{id: "evt_9", deliveries: 0}, In: in, Out: &out}
+	if err := s.Serve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "no verified destination") {
+		t.Fatalf("result = %q, want a no-destination note", out.String())
+	}
+}
+
+func TestServeQuietWhenDelivered(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_event","arguments":{"status":"success","title":"t"}}}` + "\n")
+	var out bytes.Buffer
+	s := &Server{Project: "axis", Client: &fakeSubmitter{id: "evt_9", deliveries: 1}, In: in, Out: &out}
+	if err := s.Serve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "no verified destination") {
+		t.Fatalf("result = %q, want no warning", out.String())
 	}
 }
 
