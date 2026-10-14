@@ -17,9 +17,9 @@ type fakeSubmitter struct {
 	got client.Event
 }
 
-func (f *fakeSubmitter) Submit(_ context.Context, r client.Event) (string, error) {
+func (f *fakeSubmitter) Submit(_ context.Context, r client.Event) (client.Accepted, error) {
 	f.got = r
-	return f.id, f.err
+	return client.Accepted{ID: f.id}, f.err
 }
 
 func TestServe(t *testing.T) {

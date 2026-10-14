@@ -211,6 +211,17 @@ For retrying a send that may already have succeeded, pass a stable
 `--occurrence-id`: repeating it returns the original event id instead of
 creating a duplicate.
 
+A `202` means the event was stored, not that it was delivered. When the project
+has no enabled, verified destination the gateway still accepts the event (it is
+kept for the dashboard) but queues nothing; `herald send` prints the event id to
+stdout and a warning to stderr:
+
+```
+warning: event stored but project "axis" has no verified destination — nothing will be delivered
+```
+
+Add a destination in the dashboard to start receiving notifications.
+
 ### `herald token`
 
 Issue and revoke credentials against PostgreSQL — there is no HTTP provisioning

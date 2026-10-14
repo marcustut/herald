@@ -182,7 +182,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	id, err := s.Submit.Handle(r.Context(), principal, payload.request())
+	res, err := s.Submit.Handle(r.Context(), principal, payload.request())
 	if err != nil {
 		if fieldFor(err) != "" || isValidation(err) {
 			writeError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), fieldFor(err))
@@ -191,7 +191,13 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"id": string(id)})
+	accepted := map[string]any{"id": string(res.ID)}
+	// Omit the count on an idempotent retry, where it is not known, so a client
+	// cannot mistake it for "no destination".
+	if res.Deliveries >= 0 {
+		accepted["deliveries"] = res.Deliveries
+	}
+	writeJSON(w, http.StatusAccepted, accepted)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

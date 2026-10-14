@@ -68,12 +68,16 @@ Content-Type: application/json
 A successful accept returns `202 Accepted`:
 
 ```json
-{"id": "evt_01JABC…"}
+{"id": "evt_01JABC…", "deliveries": 1}
 ```
 
 `202` means the event is durably stored and one delivery per configured sink has
 been queued — **not** that a notification has been sent yet. Delivery is
 asynchronous (see [Delivery guarantees](#delivery-guarantees)).
+
+`deliveries` is how many delivery rows were queued. `0` means the project has no
+enabled, verified destination, so nothing will be sent; the field is omitted on
+an idempotent retry, where the original event's count is not re-derived.
 
 ## Request fields
 

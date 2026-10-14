@@ -232,3 +232,53 @@ func TestSendOccurrenceID(t *testing.T) {
 		t.Fatalf("unexpected default idempotencyKey = %v", k)
 	}
 }
+
+// sendTo runs `herald send` against a stub gateway that answers with body.
+func sendTo(t *testing.T, body string) (int, string, string) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("HERALD_GATEWAY", srv.URL)
+	t.Setenv("HERALD_TOKEN", "tok")
+	t.Setenv("HERALD_PROJECT", "axis")
+	return run(t, "", "send", "--status", "success", "--title", "t")
+}
+
+// A project with no verified destination still accepts the event, but the CLI
+// must say so: otherwise a success looks like a delivered notification.
+func TestSendWarnsWhenNoDestination(t *testing.T) {
+	code, out, errOut := sendTo(t, `{"id":"evt_x","deliveries":0}`)
+	if code != 0 {
+		t.Fatalf("code=%d err=%s", code, errOut)
+	}
+	if strings.TrimSpace(out) != "evt_x" {
+		t.Fatalf("out = %q", out)
+	}
+	if !strings.Contains(errOut, "no verified destination") {
+		t.Fatalf("stderr = %q, want a no-destination warning", errOut)
+	}
+}
+
+func TestSendQuietWhenDeliveriesQueued(t *testing.T) {
+	code, _, errOut := sendTo(t, `{"id":"evt_x","deliveries":2}`)
+	if code != 0 {
+		t.Fatalf("code=%d err=%s", code, errOut)
+	}
+	if strings.Contains(errOut, "warning") {
+		t.Fatalf("stderr = %q, want no warning", errOut)
+	}
+}
+
+// An idempotent retry omits the count; the CLI must not warn (it does not know).
+func TestSendQuietWhenCountUnknown(t *testing.T) {
+	code, _, errOut := sendTo(t, `{"id":"evt_x"}`)
+	if code != 0 {
+		t.Fatalf("code=%d err=%s", code, errOut)
+	}
+	if strings.Contains(errOut, "warning") {
+		t.Fatalf("stderr = %q, want no warning when the count is unknown", errOut)
+	}
+}

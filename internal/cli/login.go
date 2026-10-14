@@ -245,7 +245,7 @@ func writeClientConfig(path, project, gateway string) error {
 // loginTest submits one event to verify the stored credential end to end.
 func loginTest(ctx context.Context, gateway, project, token string, stdout, stderr io.Writer) int {
 	cl := client.Client{Gateway: gateway, Token: token}
-	id, err := cl.Submit(ctx, client.Event{
+	res, err := cl.Submit(ctx, client.Event{
 		Project: project,
 		Status:  "success",
 		Title:   "herald login test",
@@ -256,7 +256,7 @@ func loginTest(ctx context.Context, gateway, project, token string, stdout, stde
 		fmt.Fprintln(stderr, "error: test event failed:", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "test event accepted: %s\n", id)
+	fmt.Fprintf(stdout, "test event accepted: %s\n", res.ID)
 	return 0
 }
 

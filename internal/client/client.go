@@ -53,8 +53,19 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("gateway returned %d", e.StatusCode)
 }
 
-// Submit posts a event and returns its id.
-func (c *Client) Submit(ctx context.Context, r Event) (string, error) {
+// Accepted is the gateway's acknowledgement of an event: its id and how many
+// deliveries were queued. Deliveries is DeliveriesUnknown when the gateway did
+// not report a count (an idempotent retry, or a gateway older than this field).
+type Accepted struct {
+	ID         string
+	Deliveries int
+}
+
+// DeliveriesUnknown is Accepted.Deliveries when no count is known.
+const DeliveriesUnknown = -1
+
+// Submit posts a event and returns its id and queued-delivery count.
+func (c *Client) Submit(ctx context.Context, r Event) (Accepted, error) {
 	body := map[string]any{
 		"status":         r.Status,
 		"title":          r.Title,
@@ -76,7 +87,7 @@ func (c *Client) Submit(ctx context.Context, r Event) (string, error) {
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("encode event: %w", err)
+		return Accepted{}, fmt.Errorf("encode event: %w", err)
 	}
 
 	httpClient := c.HTTP
@@ -85,7 +96,7 @@ func (c *Client) Submit(ctx context.Context, r Event) (string, error) {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.Gateway, "/")+"/v1/events", bytes.NewReader(encoded))
 	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
+		return Accepted{}, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.Token != "" {
@@ -94,24 +105,29 @@ func (c *Client) Submit(ctx context.Context, r Event) (string, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("submit event: %w", err)
+		return Accepted{}, fmt.Errorf("submit event: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 
 	if resp.StatusCode != http.StatusAccepted {
-		return "", decodeError(resp.StatusCode, data)
+		return Accepted{}, decodeError(resp.StatusCode, data)
 	}
 	var out struct {
-		ID string `json:"id"`
+		ID         string `json:"id"`
+		Deliveries *int   `json:"deliveries"`
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+		return Accepted{}, fmt.Errorf("decode response: %w", err)
 	}
 	if out.ID == "" {
-		return "", fmt.Errorf("gateway returned no id")
+		return Accepted{}, fmt.Errorf("gateway returned no id")
 	}
-	return out.ID, nil
+	deliveries := DeliveriesUnknown
+	if out.Deliveries != nil {
+		deliveries = *out.Deliveries
+	}
+	return Accepted{ID: out.ID, Deliveries: deliveries}, nil
 }
 
 func decodeError(status int, data []byte) error {

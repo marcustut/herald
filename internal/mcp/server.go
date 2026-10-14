@@ -17,7 +17,7 @@ const defaultProtocolVersion = "2024-11-05"
 
 // Submitter is the gateway client the tool calls.
 type Submitter interface {
-	Submit(ctx context.Context, r client.Event) (string, error)
+	Submit(ctx context.Context, r client.Event) (client.Accepted, error)
 }
 
 // Server serves MCP requests from In and writes responses to Out.
@@ -126,7 +126,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 	if host == "" {
 		host = s.Host
 	}
-	id, err := s.Client.Submit(ctx, client.Event{
+	res, err := s.Client.Submit(ctx, client.Event{
 		Project:        s.Project,
 		Status:         args.Status,
 		Title:          args.Title,
@@ -140,7 +140,7 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) any {
 	if err != nil {
 		return toolError(err.Error())
 	}
-	return textResult("event accepted: " + id)
+	return textResult("event accepted: " + res.ID)
 }
 
 func sendEventTool() map[string]any {
