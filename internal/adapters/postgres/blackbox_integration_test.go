@@ -281,6 +281,9 @@ func TestIntegrationHTTPSubmitToSink(t *testing.T) {
 	if accepted.ID == "" {
 		t.Fatal("submit returned an empty event id")
 	}
+	if accepted.Deliveries != 1 {
+		t.Fatalf("accepted deliveries = %d, want 1", accepted.Deliveries)
+	}
 	eventID := accepted.ID
 
 	queued := h.deliveries(t, app.DeliveryFilter{SinkID: "email"})
