@@ -30,12 +30,15 @@ func newSubmit() (SubmitEvent, *fakeEvents, *fakeSinks) {
 
 func TestSubmitHappyPath(t *testing.T) {
 	uc, events, _ := newSubmit()
-	id, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
+	res, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "evt_1" {
-		t.Fatalf("id = %q", id)
+	if res.ID != "evt_1" {
+		t.Fatalf("id = %q", res.ID)
+	}
+	if res.Deliveries != 1 {
+		t.Fatalf("deliveries = %d, want 1", res.Deliveries)
 	}
 	rep, ok := events.byKey[eventKey{"ten_1", "axis", "run-1"}]
 	if !ok {
@@ -88,8 +91,11 @@ func TestSubmitIdempotentReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != second {
-		t.Fatalf("first %q, second %q", first, second)
+	if first.ID != second.ID {
+		t.Fatalf("first %q, second %q", first.ID, second.ID)
+	}
+	if second.Deliveries != DeliveriesUnknown {
+		t.Fatalf("replay deliveries = %d, want unknown", second.Deliveries)
 	}
 	if len(events.byKey) != 1 {
 		t.Fatalf("saved %d events", len(events.byKey))
@@ -111,8 +117,8 @@ func TestSubmitIdenticalContentAreDistinctOccurrences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first == second {
-		t.Fatalf("identical content collapsed to one event: %q", first)
+	if first.ID == second.ID {
+		t.Fatalf("identical content collapsed to one event: %q", first.ID)
 	}
 	if len(events.byKey) != 2 || len(events.deliveries) != 2 {
 		t.Fatalf("events=%d deliveries=%d, want 2 each", len(events.byKey), len(events.deliveries))
@@ -133,8 +139,8 @@ func TestSubmitOccurrenceRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != second {
-		t.Fatalf("retry id = %q, want %q", second, first)
+	if first.ID != second.ID {
+		t.Fatalf("retry id = %q, want %q", second.ID, first.ID)
 	}
 	if len(events.byKey) != 1 || len(events.deliveries) != 1 {
 		t.Fatalf("events=%d deliveries=%d, want no re-fan-out", len(events.byKey), len(events.deliveries))
@@ -158,7 +164,7 @@ func TestSubmitKeysAreProjectScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first == second {
+	if first.ID == second.ID {
 		t.Fatal("the same key across two projects collapsed into one event")
 	}
 	if len(events.byKey) != 2 {
@@ -169,12 +175,12 @@ func TestSubmitKeysAreProjectScoped(t *testing.T) {
 func TestSubmitIdempotencyRace(t *testing.T) {
 	racing := &racingEvents{existing: domain.Event{ID: "evt_existing"}}
 	uc := SubmitEvent{Events: racing, Sinks: &fakeSinks{sinks: []domain.SinkID{"email"}}, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
-	id, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
+	res, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "evt_existing" {
-		t.Fatalf("id = %q", id)
+	if res.ID != "evt_existing" {
+		t.Fatalf("id = %q", res.ID)
 	}
 }
 
@@ -190,8 +196,12 @@ func TestSubmitIdempotencyRaceLookupError(t *testing.T) {
 func TestSubmitNoSinks(t *testing.T) {
 	uc, events, _ := newSubmit()
 	uc.Sinks = &fakeSinks{}
-	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); err != nil {
+	res, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
+	if err != nil {
 		t.Fatal(err)
+	}
+	if res.Deliveries != 0 {
+		t.Fatalf("deliveries = %d, want 0", res.Deliveries)
 	}
 	if len(events.deliveries) != 0 {
 		t.Fatalf("deliveries = %d", len(events.deliveries))
@@ -206,8 +216,12 @@ func TestSubmitNoSinks(t *testing.T) {
 func TestSubmitNilSinkDirectory(t *testing.T) {
 	events := newFakeEvents()
 	uc := SubmitEvent{Events: events, IDs: &fakeIDs{}, Clock: fakeClock{testNow}}
-	if _, err := uc.Handle(context.Background(), submitter, validSubmitRequest()); err != nil {
+	res, err := uc.Handle(context.Background(), submitter, validSubmitRequest())
+	if err != nil {
 		t.Fatal(err)
+	}
+	if res.Deliveries != 0 {
+		t.Fatalf("deliveries = %d, want 0", res.Deliveries)
 	}
 	if len(events.deliveries) != 0 {
 		t.Fatalf("deliveries = %d, want 0", len(events.deliveries))

@@ -271,16 +271,20 @@ func TestIntegrationHTTPSubmitToSink(t *testing.T) {
 	h := newHarness(t)
 	cl := client.Client{Gateway: h.server.URL, Token: h.token}
 
-	eventID, err := cl.Submit(h.ctx, client.Event{
+	accepted, err := cl.Submit(h.ctx, client.Event{
 		Project: "axis", Status: "success", Title: "deploy", Body: "all green",
 		Agent: "herdr", OccurrenceID: "deploy-2026-10-13",
 	})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	if eventID == "" {
+	if accepted.ID == "" {
 		t.Fatal("submit returned an empty event id")
 	}
+	if accepted.Deliveries != 1 {
+		t.Fatalf("accepted deliveries = %d, want 1", accepted.Deliveries)
+	}
+	eventID := accepted.ID
 
 	queued := h.deliveries(t, app.DeliveryFilter{SinkID: "email"})
 	if len(queued) != 1 || queued[0].State != domain.DeliveryPending {
@@ -310,8 +314,11 @@ func TestIntegrationHTTPSubmitToSink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retry submit: %v", err)
 	}
-	if again != eventID {
-		t.Fatalf("retry id = %q, want %q", again, eventID)
+	if again.ID != eventID {
+		t.Fatalf("retry id = %q, want %q", again.ID, eventID)
+	}
+	if again.Deliveries != client.DeliveriesUnknown {
+		t.Fatalf("retry deliveries = %d, want unknown", again.Deliveries)
 	}
 	if got := len(h.deliveries(t, app.DeliveryFilter{})); got != 1 {
 		t.Fatalf("deliveries after retry = %d, want 1", got)

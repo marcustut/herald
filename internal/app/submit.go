@@ -40,37 +40,49 @@ type SubmitEvent struct {
 	Clock  Clock
 }
 
+// SubmitResult is an accepted event and the deliveries fanned out for it. A
+// Deliveries of zero means the project has no enabled, verified destination, so
+// the event is stored but nothing will be sent.
+type SubmitResult struct {
+	ID         domain.EventID
+	Deliveries int
+}
+
+// DeliveriesUnknown is SubmitResult.Deliveries for an idempotent retry: the
+// original event was not re-fanned-out, so its delivery count is not re-derived.
+const DeliveriesUnknown = -1
+
 // Handle returns the event id. A retry that repeats an occurrence id (or an
 // explicit idempotency key) returns the original id without creating a second
 // event or re-fanning out. A submission without either is always a new
 // occurrence, even when its content matches an earlier one.
-func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req SubmitRequest) (domain.EventID, error) {
+func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req SubmitRequest) (SubmitResult, error) {
 	status, err := domain.ParseStatus(req.Status)
 	if err != nil {
-		return "", err
+		return SubmitResult{}, err
 	}
 	agent, err := domain.ParseAgentID(req.Agent)
 	if err != nil {
-		return "", err
+		return SubmitResult{}, err
 	}
 	links, err := parseLinks(req.Links)
 	if err != nil {
-		return "", err
+		return SubmitResult{}, err
 	}
 	labels, err := domain.NewContext(req.Context)
 	if err != nil {
-		return "", err
+		return SubmitResult{}, err
 	}
 	key, dedupe, err := submissionKey(req)
 	if err != nil {
-		return "", err
+		return SubmitResult{}, err
 	}
 
 	if dedupe {
 		if existing, ok, err := uc.Events.ByIdempotencyKey(ctx, p.TenantID, p.ProjectID, key); err != nil {
-			return "", err
+			return SubmitResult{}, err
 		} else if ok {
-			return existing.ID, nil
+			return SubmitResult{ID: existing.ID, Deliveries: DeliveriesUnknown}, nil
 		}
 	}
 
@@ -94,7 +106,7 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 		CreatedAt:      uc.Clock.Now(),
 	})
 	if err != nil {
-		return "", err
+		return SubmitResult{}, err
 	}
 	// Redact before persistence so the gateway never becomes a secret store.
 	event = event.Redact()
@@ -105,7 +117,7 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 	if uc.Sinks != nil {
 		sinks, err = uc.Sinks.EnabledSinks(ctx, p.TenantID, p.ProjectID)
 		if err != nil {
-			return "", err
+			return SubmitResult{}, err
 		}
 	}
 	deliveries := make([]domain.Delivery, len(sinks))
@@ -118,15 +130,15 @@ func (uc SubmitEvent) Handle(ctx context.Context, p domain.Principal, req Submit
 		if dedupe && errors.Is(err, ErrIdempotencyConflict) {
 			existing, ok, lookupErr := uc.Events.ByIdempotencyKey(ctx, p.TenantID, p.ProjectID, key)
 			if lookupErr != nil {
-				return "", lookupErr
+				return SubmitResult{}, lookupErr
 			}
 			if ok {
-				return existing.ID, nil
+				return SubmitResult{ID: existing.ID, Deliveries: DeliveriesUnknown}, nil
 			}
 		}
-		return "", err
+		return SubmitResult{}, err
 	}
-	return event.ID, nil
+	return SubmitResult{ID: event.ID, Deliveries: len(deliveries)}, nil
 }
 
 // submissionKey resolves the idempotency key for a request. A caller-supplied

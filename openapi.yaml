@@ -1010,6 +1010,14 @@ components:
         id:
           type: string
           example: evt_01JABCXYZ
+        deliveries:
+          type: integer
+          minimum: 0
+          description: >
+            Delivery rows queued for the event. `0` means no enabled, verified
+            destination matched, so nothing will be sent. Omitted on an
+            idempotent retry, when the count is not known.
+          example: 1
     MagicLinkRequest:
       type: object
       required: [email]

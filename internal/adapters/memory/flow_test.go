@@ -42,12 +42,12 @@ func TestEventFlowEndToEnd(t *testing.T) {
 		Agent:          "herdr-build",
 		IdempotencyKey: "run-1",
 	}
-	id, err := submit.Handle(ctx, principal, req)
+	res, err := submit.Handle(ctx, principal, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rep, ok := events.Event(id)
+	rep, ok := events.Event(res.ID)
 	if !ok {
 		t.Fatal("event not found")
 	}
@@ -57,8 +57,11 @@ func TestEventFlowEndToEnd(t *testing.T) {
 	if rep.ProjectID != "axis" || rep.AgentID != "herdr-build" {
 		t.Fatalf("event = %+v", rep)
 	}
-	if got := events.Deliveries(); len(got) != 1 || got[0].SinkID != "email" || got[0].EventID != id {
+	if got := events.Deliveries(); len(got) != 1 || got[0].SinkID != "email" || got[0].EventID != res.ID {
 		t.Fatalf("deliveries = %+v", got)
+	}
+	if res.Deliveries != 1 {
+		t.Fatalf("deliveries = %d, want 1", res.Deliveries)
 	}
 
 	// Replaying the key returns the same id and does not fan out again.
@@ -67,8 +70,11 @@ func TestEventFlowEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again != id {
-		t.Fatalf("replay id = %q, want %q", again, id)
+	if again.ID != res.ID {
+		t.Fatalf("replay id = %q, want %q", again.ID, res.ID)
+	}
+	if again.Deliveries != app.DeliveriesUnknown {
+		t.Fatalf("replay deliveries = %d, want unknown", again.Deliveries)
 	}
 	if got := events.Deliveries(); len(got) != 1 {
 		t.Fatalf("replay re-fanned out: %d deliveries", len(got))
@@ -85,13 +91,13 @@ func TestConcurrentOccurrenceRetry(t *testing.T) {
 
 	const n = 8
 	var wg sync.WaitGroup
-	ids := make([]domain.EventID, n)
+	results := make([]app.SubmitResult, n)
 	errs := make([]error, n)
 	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			ids[i], errs[i] = submit.Handle(ctx, principal, req)
+			results[i], errs[i] = submit.Handle(ctx, principal, req)
 		}(i)
 	}
 	wg.Wait()
@@ -99,8 +105,8 @@ func TestConcurrentOccurrenceRetry(t *testing.T) {
 		if err != nil {
 			t.Fatalf("goroutine %d: %v", i, err)
 		}
-		if ids[i] != ids[0] {
-			t.Fatalf("ids differ: %q vs %q", ids[i], ids[0])
+		if results[i].ID != results[0].ID {
+			t.Fatalf("ids differ: %q vs %q", results[i].ID, results[0].ID)
 		}
 	}
 	if got := events.Deliveries(); len(got) != 1 {

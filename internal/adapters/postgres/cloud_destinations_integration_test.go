@@ -91,11 +91,11 @@ func submitEvent(t *testing.T, ctx context.Context, events *postgres.Events, dir
 		t.Fatalf("principal: %v", err)
 	}
 	uc := app.SubmitEvent{Events: events, Sinks: directory, IDs: id.Random{}, Clock: clock}
-	eventID, err := uc.Handle(ctx, principal, app.SubmitRequest{Status: "success", Title: "deploy", Body: "done", Agent: "herdr"})
+	res, err := uc.Handle(ctx, principal, app.SubmitRequest{Status: "success", Title: "deploy", Body: "done", Agent: "herdr"})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	return eventID
+	return res.ID
 }
 
 // TestIntegrationHostedEmailDeliversOnlyVerified proves the hosted delivery

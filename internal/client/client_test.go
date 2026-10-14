@@ -22,14 +22,17 @@ func TestSubmit(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{Gateway: srv.URL, Token: "herald_axis_secret"}
-	id, err := c.Submit(context.Background(), Event{
+	res, err := c.Submit(context.Background(), Event{
 		Project: "axis", Status: "success", Title: "t", Agent: "a", Host: "h", OccurrenceID: "occ-1", IdempotencyKey: "k",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "evt_1" {
-		t.Fatalf("id = %q", id)
+	if res.ID != "evt_1" {
+		t.Fatalf("id = %q", res.ID)
+	}
+	if res.Deliveries != DeliveriesUnknown {
+		t.Fatalf("deliveries = %d, want unknown when the gateway omits it", res.Deliveries)
 	}
 	if auth != "Bearer herald_axis_secret" || contentType != "application/json" {
 		t.Fatalf("auth=%q ct=%q", auth, contentType)
@@ -39,6 +42,22 @@ func TestSubmit(t *testing.T) {
 	}
 	if body["occurrenceId"] != "occ-1" || body["idempotencyKey"] != "k" {
 		t.Fatalf("body = %v", body)
+	}
+}
+
+func TestSubmitReportsDeliveryCount(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"evt_1","deliveries":0}`))
+	}))
+	defer srv.Close()
+
+	res, err := (&Client{Gateway: srv.URL}).Submit(context.Background(), Event{Status: "success", Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ID != "evt_1" || res.Deliveries != 0 {
+		t.Fatalf("res = %+v, want id evt_1 and 0 deliveries", res)
 	}
 }
 

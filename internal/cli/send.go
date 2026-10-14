@@ -91,12 +91,19 @@ func runSend(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		event.Agent = "herald"
 	}
 
-	id, err := cl.Submit(ctx, event)
+	res, err := cl.Submit(ctx, event)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
-	fmt.Fprintln(stdout, id)
+	fmt.Fprintln(stdout, res.ID)
+	if res.Deliveries == 0 {
+		scope := "this project"
+		if event.Project != "" {
+			scope = fmt.Sprintf("project %q", event.Project)
+		}
+		fmt.Fprintf(stderr, "warning: event stored but %s has no verified destination — nothing will be delivered\n", scope)
+	}
 	return 0
 }
 
